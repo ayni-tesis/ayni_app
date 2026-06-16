@@ -253,7 +253,7 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
   }
 
   LeafDetectionModel _classifyFallback(LeafDetectionModel leaf, String reason) {
-    print('Clasificación fallida para ${leaf.id}: $reason');
+    // TODO: replace with proper logging framework
     return LeafDetectionModel.fromEntity(
       leaf.copyWith(diagnosedPest: PestType.healthy, confidence: 0.0),
     );
@@ -278,7 +278,7 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
           .map((j) => DiagnosisModel.fromJson(j as Map<String, dynamic>))
           .toList();
     } catch (e) {
-      print('Error decodificando historial: $e');
+      // TODO: replace with proper logging framework
       return [];
     }
   }

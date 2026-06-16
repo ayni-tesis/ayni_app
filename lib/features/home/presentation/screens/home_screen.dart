@@ -52,7 +52,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return connectivityAsync.when(
       data: (isOnline) => _buildScaffold(isOnline, isOfflineMode),
       loading: () => _buildScaffold(true, isOfflineMode),
-      error: (_, __) => _buildScaffold(true, isOfflineMode),
+      error: (_, _) => _buildScaffold(true, isOfflineMode),
     );
   }
 
@@ -338,7 +338,7 @@ class _RecentDiagnosesSection extends ConsumerWidget {
             padding: EdgeInsets.all(AppSpacing.s4),
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           ),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
         ),
       ],
     );
@@ -644,7 +644,8 @@ class _AccountBody extends ConsumerWidget {
             trailing: Switch.adaptive(
               value: false,
               onChanged: (val) {},
-              activeColor: AppColors.primary,
+              activeTrackColor: AppColors.primary,
+              activeThumbColor: AppColors.white,
             ),
           ),
           _buildMenuItem(

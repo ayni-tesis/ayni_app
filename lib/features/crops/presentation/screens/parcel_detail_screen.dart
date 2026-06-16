@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
-import '../../../diagnosis/domain/entities/pest_type.dart';
 import '../../domain/entities/crop.dart';
 import '../../domain/entities/parcel.dart';
 import '../providers/crops_provider.dart';
@@ -56,7 +55,7 @@ class _ParcelDetailScreenState extends ConsumerState<ParcelDetailScreen> {
             style: AppTextStyles.heading6.copyWith(color: AppColors.black2),
           ),
           loading: () => const Text('...'),
-          error: (_, __) => const Text('Error'),
+          error: (_, _) => const Text('Error'),
         ),
         actions: [
           parcelAsync.whenData((parcel) {
@@ -85,7 +84,7 @@ class _ParcelDetailScreenState extends ConsumerState<ParcelDetailScreen> {
               return _ParcelInfoCard(parcel: parcel);
             },
             loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
           ),
           // ─── Crops filter + list ──────────────────────────────────────────
           Expanded(

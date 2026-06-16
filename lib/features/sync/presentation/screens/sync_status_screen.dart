@@ -156,11 +156,12 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   }
 
   Future<void> _triggerSync(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
     final result = await ref.read(syncNotifierProvider.notifier).syncPending();
     if (!mounted) return;
 
     if (result > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text('$result diagnóstico(s) sincronizado(s)'),
           backgroundColor: AppColors.success,
@@ -171,7 +172,7 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
     } else {
       final status = ref.read(syncNotifierProvider);
       if (status.errorMessage != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(status.errorMessage!),
             backgroundColor: AppColors.error,

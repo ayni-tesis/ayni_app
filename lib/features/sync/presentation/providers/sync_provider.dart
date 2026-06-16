@@ -30,13 +30,10 @@ class SyncNotifier extends StateNotifier<SyncStatus> {
   final ConnectivityService _connectivity;
 
   SyncNotifier({
-    required SyncRepository syncRepo,
-    required DiagnosisRepository diagnosisRepo,
-    required ConnectivityService connectivity,
-  })  : _syncRepo = syncRepo,
-        _diagnosisRepo = diagnosisRepo,
-        _connectivity = connectivity,
-        super(const SyncStatus()) {
+    required this._syncRepo,
+    required this._diagnosisRepo,
+    required this._connectivity,
+  }) : super(const SyncStatus()) {
     _loadStatus();
   }
 

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ayni_app/features/home/presentation/screens/home_screen.dart';
-import 'package:ayni_app/features/home/presentation/widgets/my_plants_body.dart';
 import 'package:ayni_app/features/diagnosis/presentation/providers/diagnosis_provider.dart';
 import 'package:ayni_app/shared/widgets/ayni_bottom_nav.dart';
 

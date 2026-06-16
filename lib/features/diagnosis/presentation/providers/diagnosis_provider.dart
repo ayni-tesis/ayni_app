@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../../core/errors/failures.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../data/datasources/diagnosis_local_datasource.dart';
 import '../../data/datasources/diagnosis_remote_datasource.dart';
@@ -119,15 +118,11 @@ class DiagnosisNotifier extends StateNotifier<DiagnosisState> {
   final Ref _ref;
 
   DiagnosisNotifier({
-    required DetectLeavesUseCase detectLeavesUseCase,
-    required ClassifyPestsUseCase classifyPestsUseCase,
-    required SaveDiagnosisUseCase saveDiagnosisUseCase,
-    required Ref ref,
-  })  : _detectLeavesUseCase = detectLeavesUseCase,
-        _classifyPestsUseCase = classifyPestsUseCase,
-        _saveDiagnosisUseCase = saveDiagnosisUseCase,
-        _ref = ref,
-        super(DiagnosisState.initial());
+    required this._detectLeavesUseCase,
+    required this._classifyPestsUseCase,
+    required this._saveDiagnosisUseCase,
+    required this._ref,
+  }) : super(DiagnosisState.initial());
 
   void setCapturedImage(String imagePath, bool isOffline) {
     state = DiagnosisState.initial(isOffline: isOffline).copyWith(

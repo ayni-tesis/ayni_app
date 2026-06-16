@@ -7,7 +7,6 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../domain/entities/pest_type.dart';
 import '../../domain/entities/diagnosis.dart';
-import '../../domain/entities/leaf_detection.dart';
 import '../providers/diagnosis_provider.dart';
 
 class DiagnosisHistoryScreen extends ConsumerWidget {

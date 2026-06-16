@@ -100,7 +100,7 @@ class ConnectionChoiceScreen extends ConsumerWidget {
                   subtitle: 'Verificando...',
                   onTap: onOfflineSelected,
                 ),
-                error: (_, __) => _ConnectionOption(
+                error: (_, _) => _ConnectionOption(
                   icon: Icons.cloud_off_rounded,
                   iconColor: AppColors.warning,
                   title: 'Sin conexión',

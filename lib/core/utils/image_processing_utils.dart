@@ -86,7 +86,7 @@ class ImageProcessingUtils {
     } catch (e) {
       // Avoid failing hard, log and return whatever we managed to crop
       // or an empty list.
-      print('Error during image cropping: $e');
+      // TODO: replace with proper logging framework (dart:developer log)
     }
 
     return croppedPaths;

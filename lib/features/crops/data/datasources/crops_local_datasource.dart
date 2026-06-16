@@ -63,7 +63,7 @@ class CropsLocalDataSourceImpl implements CropsLocalDataSource {
       parcels.add(updated);
     }
 
-    final jsonList = parcels.map((p) => (p as ParcelModel).toJson()).toList();
+    final jsonList = parcels.map((p) => p.toJson()).toList();
     await sharedPreferences.setString(_parcelsKey, jsonEncode(jsonList));
   }
 
@@ -78,11 +78,11 @@ class CropsLocalDataSourceImpl implements CropsLocalDataSource {
 
     await sharedPreferences.setString(
       _parcelsKey,
-      jsonEncode(parcels.map((p) => (p as ParcelModel).toJson()).toList()),
+      jsonEncode(parcels.map((p) => p.toJson()).toList()),
     );
     await sharedPreferences.setString(
       _cropsKey,
-      jsonEncode(crops.map((c) => (c as CropModel).toJson()).toList()),
+      jsonEncode(crops.map((c) => c.toJson()).toList()),
     );
   }
 
@@ -143,7 +143,7 @@ class CropsLocalDataSourceImpl implements CropsLocalDataSource {
 
     await sharedPreferences.setString(
       _cropsKey,
-      jsonEncode(crops.map((c) => (c as CropModel).toJson()).toList()),
+      jsonEncode(crops.map((c) => c.toJson()).toList()),
     );
   }
 
@@ -170,7 +170,7 @@ class CropsLocalDataSourceImpl implements CropsLocalDataSource {
 
     await sharedPreferences.setString(
       _cropsKey,
-      jsonEncode(crops.map((c) => (c as CropModel).toJson()).toList()),
+      jsonEncode(crops.map((c) => c.toJson()).toList()),
     );
   }
 }
