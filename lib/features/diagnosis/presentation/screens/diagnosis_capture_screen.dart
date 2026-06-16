@@ -9,8 +9,13 @@ import 'diagnosis_processing_screen.dart';
 
 class DiagnosisCaptureScreen extends ConsumerStatefulWidget {
   final bool isOfflineMode;
+  final bool preferGallery;
 
-  const DiagnosisCaptureScreen({super.key, required this.isOfflineMode});
+  const DiagnosisCaptureScreen({
+    super.key,
+    required this.isOfflineMode,
+    this.preferGallery = false,
+  });
 
   @override
   ConsumerState<DiagnosisCaptureScreen> createState() => _DiagnosisCaptureScreenState();
@@ -19,6 +24,16 @@ class DiagnosisCaptureScreen extends ConsumerStatefulWidget {
 class _DiagnosisCaptureScreenState extends ConsumerState<DiagnosisCaptureScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.preferGallery) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pickImage(ImageSource.gallery);
+      });
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     try {

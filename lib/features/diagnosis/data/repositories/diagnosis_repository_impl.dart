@@ -102,4 +102,22 @@ class DiagnosisRepositoryImpl implements DiagnosisRepository {
       return Left(CacheFailure('No se pudo recuperar el historial: ${e.toString()}'));
     }
   }
+
+  @override
+  Future<Diagnosis?> syncDiagnosis(Diagnosis diagnosis) async {
+    try {
+      final isOnline = await connectivityService.isConnected();
+      if (!isOnline) return null;
+
+      final model = DiagnosisModel.fromEntity(diagnosis);
+      await remoteDataSource.uploadDiagnosis(model);
+
+      // Mark as synced locally
+      final synced = diagnosis.copyWith(isSynced: true);
+      await localDataSource.saveDiagnosis(DiagnosisModel.fromEntity(synced));
+      return synced;
+    } catch (_) {
+      return null;
+    }
+  }
 }

@@ -20,4 +20,8 @@ abstract class DiagnosisRepository {
 
   /// Retrieves the history of diagnoses.
   Future<Either<Failure, List<Diagnosis>>> getDiagnosisHistory();
+
+  /// Syncs a single offline diagnosis to the backend server.
+  /// Returns the synced diagnosis on success, null on failure.
+  Future<Diagnosis?> syncDiagnosis(Diagnosis diagnosis);
 }
