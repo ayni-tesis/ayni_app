@@ -49,7 +49,6 @@ class AyniBottomNav extends StatelessWidget {
                 icon: Icons.shield_rounded,
                 inactiveIcon: Icons.shield_outlined,
                 label: 'Diagnose',
-                onCustomTap: onCameraTap, // Tapping Diagnose tab directly opens camera flow
               ),
               // 3. Center Camera Floating Button
               _buildCenterCameraButton(),
