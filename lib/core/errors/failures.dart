@@ -22,6 +22,14 @@ class ProcessingFailure extends Failure {
   const ProcessingFailure([super.message = 'Error al procesar la imagen.']);
 }
 
+class ValidationFailure extends Failure {
+  const ValidationFailure([super.message = 'Datos inválidos.']);
+}
+
+class AuthFailure extends Failure {
+  const AuthFailure([super.message = 'No se pudo iniciar sesión.']);
+}
+
 abstract class Either<L, R> {
   const Either();
   T fold<T>(T Function(L left) onLeft, T Function(R right) onRight);
