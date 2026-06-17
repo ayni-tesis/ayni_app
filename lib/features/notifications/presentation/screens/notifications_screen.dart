@@ -1,52 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../domain/entities/notification_item.dart';
+import '../providers/notifications_provider.dart';
 
-class NotificationsScreen extends StatelessWidget {
+class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Mock notifications list targeted for Villa Rica coffee growers
-    final List<NotificationItem> notifications = [
-      NotificationItem(
-        id: '1',
-        title: 'Sincronización Completada',
-        description: 'Se han sincronizado con éxito 3 diagnósticos locales que tenías pendientes.',
-        time: 'Hace 5 min',
-        icon: Icons.sync_rounded,
-        iconColor: AppColors.success,
-        isRead: false,
-      ),
-      NotificationItem(
-        id: '2',
-        title: 'Alerta Preventiva de Roya',
-        description: 'La humedad y lluvias en Villa Rica aumentan la probabilidad de brotes de Roya. Monitorea tus plantas.',
-        time: 'Hace 2 horas',
-        icon: Icons.warning_rounded,
-        iconColor: AppColors.warning,
-        isRead: false,
-      ),
-      NotificationItem(
-        id: '3',
-        title: 'Recomendación de Cultivo',
-        description: 'La poda de ramas bajas mejora el flujo de aire y reduce la acumulación de humedad en las hojas.',
-        time: 'Ayer',
-        icon: Icons.tips_and_updates_rounded,
-        iconColor: AppColors.primary,
-        isRead: true,
-      ),
-      NotificationItem(
-        id: '4',
-        title: 'Sistema Actualizado',
-        description: 'Tu modelo local de YOLO y clasificación se ha actualizado a la versión v1.4.',
-        time: 'Hace 3 días',
-        icon: Icons.system_update_alt_rounded,
-        iconColor: AppColors.gray2,
-        isRead: true,
-      ),
-    ];
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notificationsAsync = ref.watch(notificationsProvider);
+    final unreadCount = ref.watch(unreadNotificationsCountProvider);
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -67,88 +34,162 @@ class NotificationsScreen extends StatelessWidget {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: AppColors.black2, size: 24),
-            onPressed: () {},
-          ),
+          if (unreadCount > 0)
+            TextButton(
+              onPressed: () =>
+                  ref.read(notificationsProvider.notifier).markAllAsRead(),
+              child: Text(
+                'Marcar leídas',
+                style: AppTextStyles.smallTextBold.copyWith(
+                  color: AppColors.primary,
+                ),
+              ),
+            )
+          else
+            const IconButton(
+              icon: Icon(Icons.settings_outlined, color: AppColors.black2, size: 24),
+              onPressed: null,
+            ),
           const SizedBox(width: AppSpacing.s2),
         ],
       ),
-      body: notifications.isEmpty
-          ? _buildEmptyState()
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4, vertical: AppSpacing.s2),
-              itemCount: notifications.length,
-              itemBuilder: (context, index) {
-                final item = notifications[index];
-                return _buildNotificationCard(item);
-              },
+      body: notificationsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.s4),
+            child: Text(
+              'Error al cargar notificaciones: $e',
+              style: AppTextStyles.bodyRegular.copyWith(color: AppColors.error),
+              textAlign: TextAlign.center,
             ),
+          ),
+        ),
+        data: (notifications) {
+          if (notifications.isEmpty) return _buildEmptyState();
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.s4, vertical: AppSpacing.s2),
+            itemCount: notifications.length,
+            itemBuilder: (context, index) {
+              final item = notifications[index];
+              return _buildNotificationCard(context, ref, item);
+            },
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildNotificationCard(NotificationItem item) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.s3),
-      padding: const EdgeInsets.all(AppSpacing.s3),
-      decoration: BoxDecoration(
-        color: item.isRead ? AppColors.white : AppColors.secondary.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: item.isRead ? AppColors.gray5 : AppColors.primary.withValues(alpha: 0.15),
-          width: item.isRead ? 1 : 1.5,
+  Widget _buildNotificationCard(
+    BuildContext context,
+    WidgetRef ref,
+    NotificationItem item,
+  ) {
+    return Dismissible(
+      key: ValueKey(item.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: AppSpacing.s3),
+        margin: const EdgeInsets.only(bottom: AppSpacing.s3),
+        decoration: BoxDecoration(
+          color: AppColors.error.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(16),
         ),
+        child: const Icon(Icons.delete_outline, color: AppColors.error),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Icon indicator
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.s2),
-            decoration: BoxDecoration(
-              color: item.iconColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+      onDismissed: (_) =>
+          ref.read(notificationsProvider.notifier).delete(item.id),
+      child: GestureDetector(
+        onTap: () {
+          if (!item.isRead) {
+            ref.read(notificationsProvider.notifier).markAsRead(item.id);
+          }
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: AppSpacing.s3),
+          padding: const EdgeInsets.all(AppSpacing.s3),
+          decoration: BoxDecoration(
+            color: item.isRead
+                ? AppColors.white
+                : AppColors.secondary.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: item.isRead ? AppColors.gray5 : AppColors.primary.withValues(alpha: 0.15),
+              width: item.isRead ? 1 : 1.5,
             ),
-            child: Icon(item.icon, color: item.iconColor, size: 22),
           ),
-          const SizedBox(width: AppSpacing.s3),
-          // Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.s2),
+                decoration: BoxDecoration(
+                  color: _iconColor(item.type).withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _iconFor(item.type),
+                  color: _iconColor(item.type),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            item.title,
+                            style: AppTextStyles.bodyBold.copyWith(
+                              color: AppColors.black2,
+                              fontSize: 15,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatTime(item.receivedAt),
+                          style: AppTextStyles.smallTextRegular.copyWith(
+                            color: AppColors.gray3,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Text(
-                      item.title,
-                      style: AppTextStyles.bodyBold.copyWith(
-                        color: AppColors.black2,
-                        fontSize: 15,
+                      item.body,
+                      style: AppTextStyles.bodyRegular.copyWith(
+                        color: AppColors.gray1,
+                        fontSize: 13,
+                        height: 1.4,
                       ),
                     ),
-                    Text(
-                      item.time,
-                      style: AppTextStyles.smallTextRegular.copyWith(
-                        color: AppColors.gray3,
-                        fontSize: 11,
+                    if (!item.isRead) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  item.description,
-                  style: AppTextStyles.bodyRegular.copyWith(
-                    color: AppColors.gray1,
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -189,24 +230,48 @@ class NotificationsScreen extends StatelessWidget {
       ),
     );
   }
-}
 
-class NotificationItem {
-  final String id;
-  final String title;
-  final String description;
-  final String time;
-  final IconData icon;
-  final Color iconColor;
-  final bool isRead;
+  IconData _iconFor(NotificationType type) {
+    switch (type) {
+      case NotificationType.syncCompleted:
+        return Icons.sync_rounded;
+      case NotificationType.pestAlert:
+        return Icons.warning_rounded;
+      case NotificationType.recommendation:
+        return Icons.tips_and_updates_rounded;
+      case NotificationType.systemUpdate:
+        return Icons.system_update_alt_rounded;
+      case NotificationType.diagnosisComplete:
+        return Icons.check_circle_rounded;
+      case NotificationType.other:
+        return Icons.notifications_rounded;
+    }
+  }
 
-  const NotificationItem({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.time,
-    required this.icon,
-    required this.iconColor,
-    required this.isRead,
-  });
+  Color _iconColor(NotificationType type) {
+    switch (type) {
+      case NotificationType.syncCompleted:
+        return AppColors.success;
+      case NotificationType.pestAlert:
+        return AppColors.warning;
+      case NotificationType.recommendation:
+        return AppColors.primary;
+      case NotificationType.systemUpdate:
+        return AppColors.gray2;
+      case NotificationType.diagnosisComplete:
+        return AppColors.success;
+      case NotificationType.other:
+        return AppColors.primary;
+    }
+  }
+
+  String _formatTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Ahora';
+    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
+    if (diff.inHours < 24) return 'Hace ${diff.inHours} h';
+    if (diff.inDays < 7) return 'Hace ${diff.inDays} d';
+    return DateFormat('dd/MM/yy').format(dt);
+  }
 }
