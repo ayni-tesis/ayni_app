@@ -1,3 +1,5 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,17 +8,35 @@ import 'core/theme/app_theme.dart';
 import 'core/constants/app_colors.dart';
 import 'core/constants/app_spacing.dart';
 import 'core/network/navigation_notifier.dart';
+import 'features/auth/presentation/providers/auth_provider.dart';
 import 'features/onboarding/presentation/screens/onboarding_screen.dart';
 import 'features/connection_choice/presentation/screens/connection_choice_screen.dart';
 import 'features/auth/presentation/screens/login_screen.dart';
 import 'features/auth/presentation/screens/get_started_screen.dart';
 import 'features/auth/presentation/screens/sign_up_screen.dart';
 import 'features/home/presentation/screens/home_screen.dart';
-import 'features/diagnosis/presentation/providers/diagnosis_provider.dart';
+import 'features/notifications/presentation/providers/notifications_provider.dart';
+import 'features/profile/presentation/providers/profile_provider.dart';
+import 'firebase_options.dart';
+
+/// Background FCM handler. Must be a top-level function (not a method)
+/// so it survives the app being terminated by the OS. When the user
+/// taps a notification on the lock screen, this is the entry point.
+@pragma('vm:entry-point')
+Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sharedPrefs = await SharedPreferences.getInstance();
+
+  // Initialize Firebase BEFORE any feature tries to read an FCM token.
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Register the background handler BEFORE runApp so the OS can invoke
+  // it while the app is terminated.
+  FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -25,11 +45,24 @@ void main() async {
     ),
   );
 
+  final container = ProviderContainer(
+    overrides: [
+      sharedPreferencesProvider.overrideWithValue(sharedPrefs),
+    ],
+  );
+
+  // Restore any persisted session BEFORE the first frame so the user
+  // never sees a flash of the login screen if they were already
+  // authenticated.
+  await container.read(authNotifierProvider.notifier).bootstrap();
+  // Touch the profile notifier so it starts loading the stored
+  // profile; the home screen reads it asynchronously and is fine
+  // with a brief loading state.
+  container.read(profileNotifierProvider);
+
   runApp(
-    ProviderScope(
-      overrides: [
-        sharedPreferencesProvider.overrideWithValue(sharedPrefs),
-      ],
+    UncontrolledProviderScope(
+      container: container,
       child: const AyniApp(),
     ),
   );
@@ -40,6 +73,11 @@ class AyniApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Touch the notifications provider so FCM bootstraps early. We
+    // intentionally do not `await` here — the notifier's own
+    // `_bootstrap()` is fire-and-forget.
+    ref.watch(notificationsProvider);
+
     return MaterialApp(
       title: 'Ayni',
       debugShowCheckedModeBanner: false,
@@ -70,16 +108,24 @@ class _AppNavigatorState extends ConsumerState<AppNavigator> {
   Future<void> _loadInitialScreen() async {
     final prefs = await SharedPreferences.getInstance();
     final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
+    final isAuthenticated = ref.read(isAuthenticatedProvider);
+
     if (mounted) {
       setState(() {
         _hasSeenOnboarding = hasSeenOnboarding;
         _currentScreen = AppScreen.splash;
       });
-      // After splash delay, go to onboarding (or connection choice if already seen)
+      // After splash delay, route based on auth state.
       Future.delayed(const Duration(milliseconds: 2500), () {
         if (mounted) {
           setState(() {
-            _currentScreen = _hasSeenOnboarding ? AppScreen.connectionChoice : AppScreen.onboarding;
+            if (isAuthenticated) {
+              _currentScreen = AppScreen.home;
+            } else if (_hasSeenOnboarding) {
+              _currentScreen = AppScreen.connectionChoice;
+            } else {
+              _currentScreen = AppScreen.onboarding;
+            }
           });
         }
       });

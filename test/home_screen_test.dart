@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ayni_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:ayni_app/features/home/presentation/screens/home_screen.dart';
-import 'package:ayni_app/features/diagnosis/presentation/providers/diagnosis_provider.dart';
+import 'package:ayni_app/features/diagnosis/presentation/screens/pest_catalog_screen.dart';
+import 'package:ayni_app/features/diagnosis/presentation/screens/pest_detail_screen.dart';
 import 'package:ayni_app/shared/widgets/ayni_bottom_nav.dart';
 
 void main() {
   setUp(() {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      // Seed SharedPreferences with mock session so bootstrap resolves authenticated
+      'auth.currentUser.v1': '{"id":"123","email":"andrew.ainsley@yourdomain.com","fullName":"Andrew Ainsley","role":"farmer","createdAt":"2026-06-17T00:00:00.000Z"}',
+      'auth.currentSession.v1': '{"userId":"123","issuedAt":"2026-06-17T00:00:00.000Z","expiresAt":"2026-06-18T00:00:00.000Z"}',
+    });
   });
 
   testWidgets('HomeScreen can navigate to Account tab and show profile details', (WidgetTester tester) async {
@@ -31,8 +37,14 @@ void main() {
       ),
     );
 
-    // Verify we are on home body initially (Juan greeting)
-    expect(find.text('¡Hola, Juan!'), findsOneWidget);
+    // Bootstrap session to ensure user is logged in
+    final element = tester.element(find.byType(HomeScreen));
+    final container = ProviderScope.containerOf(element);
+    await container.read(authNotifierProvider.notifier).bootstrap();
+    await tester.pumpAndSettle();
+
+    // Verify we are on home body initially (Andrew greeting)
+    expect(find.text('¡Hola, Andrew!'), findsOneWidget);
 
     // Tap the Account tab (represented by Icons.person_outline in bottom navigation)
     final personIconInBottomNav = find.descendant(
@@ -45,15 +57,14 @@ void main() {
     // Verify profile info is displayed
     expect(find.text('Andrew Ainsley'), findsOneWidget);
     expect(find.text('andrew.ainsley@yourdomain.com'), findsOneWidget);
-    expect(find.text('Upgrade Plan to Unlock More!'), findsOneWidget);
 
     // Verify settings list is shown
-    expect(find.text('Notifications'), findsOneWidget);
-    expect(find.text('Account & Security'), findsOneWidget);
-    expect(find.text('Logout'), findsOneWidget);
+    expect(find.text('Notificaciones'), findsOneWidget);
+    expect(find.text('Mis cultivos'), findsOneWidget);
+    expect(find.text('Cerrar sesión'), findsOneWidget);
 
     // Scroll logout row into view and tap it
-    final logoutFinder = find.text('Logout');
+    final logoutFinder = find.text('Cerrar sesión');
     await tester.ensureVisible(logoutFinder);
     await tester.tap(logoutFinder);
     await tester.pumpAndSettle();
@@ -74,7 +85,7 @@ void main() {
     expect(logoutCalled, isTrue);
   });
 
-  testWidgets('HomeScreen displays interactive disease cards and expert consultation chat simulator', (WidgetTester tester) async {
+  testWidgets('HomeScreen displays disease cards and navigates to pest catalog and details', (WidgetTester tester) async {
     final sharedPrefs = await SharedPreferences.getInstance();
 
     await tester.pumpWidget(
@@ -90,75 +101,60 @@ void main() {
       ),
     );
 
+    // Bootstrap session to ensure user is logged in
+    final element = tester.element(find.byType(HomeScreen));
+    final container = ProviderScope.containerOf(element);
+    await container.read(authNotifierProvider.notifier).bootstrap();
+    await tester.pumpAndSettle();
+
     // Verify we see "Enfermedades Comunes" section
     expect(find.text('Enfermedades Comunes'), findsOneWidget);
     expect(find.text('Roya'), findsOneWidget);
     expect(find.text('Minador'), findsOneWidget);
 
-    // Scroll Roya into view and tap it
-    final royaFinder = find.text('Roya');
-    await tester.ensureVisible(royaFinder);
-    await tester.tap(royaFinder);
+    // Navigate to Account tab to find the Pest Catalog option
+    final personIconInBottomNav = find.descendant(
+      of: find.byType(AyniBottomNav),
+      matching: find.byIcon(Icons.person_outline),
+    );
+    await tester.tap(personIconInBottomNav);
     await tester.pumpAndSettle();
 
-    // Verify Bottom Sheet details are shown for Roya
-    expect(find.text('Plaga de Café'), findsOneWidget);
-    expect(find.text('¿Qué es?'), findsOneWidget);
-    expect(find.text('Recomendaciones de Control y Tratamiento'), findsOneWidget);
-    expect(find.text('Entendido'), findsOneWidget);
-
-    // Scroll 'Entendido' into view and tap it
-    final entendidoFinder = find.text('Entendido');
-    await tester.ensureVisible(entendidoFinder);
-    await tester.tap(entendidoFinder);
+    // Find and tap 'Catálogo de plagas'
+    final catalogTileFinder = find.text('Catálogo de plagas');
+    await tester.ensureVisible(catalogTileFinder);
+    await tester.tap(catalogTileFinder);
     await tester.pumpAndSettle();
 
-    // Verify bottom sheet is dismissed
-    expect(find.text('¿Qué es?'), findsNothing);
+    // Verify we are on PestCatalogScreen
+    expect(find.byType(PestCatalogScreen), findsOneWidget);
+    expect(find.text('Catálogo de Plagas'), findsOneWidget);
+    expect(find.text('Roya'), findsOneWidget);
 
-    // Scroll 'Consultar Experto' into view and tap it
-    final expertTileFinder = find.text('Consultar Experto');
-    await tester.ensureVisible(expertTileFinder);
-    await tester.tap(expertTileFinder);
+    // Tap on Roya to see detail screen
+    final royaTileFinder = find.text('Roya');
+    await tester.tap(royaTileFinder);
     await tester.pumpAndSettle();
 
-    // Verify expert sheet loads
-    expect(find.text('Asesores Técnicos de Café'), findsOneWidget);
-    expect(find.text('Ing. Carlos Mendoza'), findsOneWidget);
-    expect(find.text('Dra. Sofía Altamirano'), findsOneWidget);
+    // Verify PestDetailScreen displays properly
+    expect(find.byType(PestDetailScreen), findsOneWidget);
+    expect(find.text('Síntomas Visibles'), findsOneWidget);
+    expect(find.text('Control y Tratamiento'), findsOneWidget);
+    expect(find.text('Medidas de Prevención'), findsOneWidget);
+    expect(find.text('Volver a Diagnosticar'), findsOneWidget);
 
-    // Tap on Carlos Mendoza to trigger chat simulator dialog
-    await tester.tap(find.text('Ing. Carlos Mendoza'));
+    // Go back to catalog
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await tester.pumpAndSettle();
 
-    // Verify chat simulation dialog is visible
-    expect(find.text('Asesor en línea'), findsOneWidget);
-    expect(find.text('Escribe tu consulta...'), findsOneWidget);
+    // Verify we are back on catalog screen
+    expect(find.byType(PestCatalogScreen), findsOneWidget);
 
-    // Enter text and click send
-    final textInputFinder = find.widgetWithText(TextField, 'Escribe tu consulta...');
-    expect(textInputFinder, findsOneWidget);
-    await tester.enterText(textInputFinder, 'Hola, tengo Roya');
-    await tester.pump();
-
-    final sendButtonFinder = find.byIcon(Icons.send_rounded);
-    expect(sendButtonFinder, findsOneWidget);
-    await tester.tap(sendButtonFinder);
+    // Go back to home screen
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
     await tester.pumpAndSettle();
 
-    // Verify message is shown in chat list
-    expect(find.text('Hola, tengo Roya'), findsOneWidget);
-
-    // Wait for the simulated agronomist answer (1.5 seconds mock delay)
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
-
-    // Verify reply is rendered
-    expect(find.text('Para la Roya del café, te sugiero aplicar caldos minerales (sulfocálcico) preventivamente y retirar hojas enfermas para evitar esporas.'), findsOneWidget);
-
-    // Close the chat simulation dialog
-    final closeButtonFinder = find.byIcon(Icons.close);
-    await tester.tap(closeButtonFinder);
-    await tester.pumpAndSettle();
+    // Verify we are back on home/account screen
+    expect(find.text('Catálogo de plagas'), findsOneWidget);
   });
 }
