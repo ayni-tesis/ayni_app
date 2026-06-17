@@ -11,6 +11,7 @@ class LeafDetectionModel extends LeafDetection {
     required super.croppedImagePath,
     super.diagnosedPest,
     super.confidence,
+    super.severity,
   });
 
   factory LeafDetectionModel.fromEntity(LeafDetection entity) {
@@ -23,6 +24,7 @@ class LeafDetectionModel extends LeafDetection {
       croppedImagePath: entity.croppedImagePath,
       diagnosedPest: entity.diagnosedPest,
       confidence: entity.confidence,
+      severity: entity.severity,
     );
   }
 
@@ -38,6 +40,7 @@ class LeafDetectionModel extends LeafDetection {
           ? PestType.values.firstWhere((e) => e.name == json['diagnosedPest'])
           : null,
       confidence: json['confidence'] != null ? (json['confidence'] as num).toDouble() : null,
+      severity: json['severity'] != null ? (json['severity'] as num).toDouble() : null,
     );
   }
 
@@ -51,6 +54,7 @@ class LeafDetectionModel extends LeafDetection {
       'croppedImagePath': croppedImagePath,
       'diagnosedPest': diagnosedPest?.name,
       'confidence': confidence,
+      'severity': severity,
     };
   }
 }

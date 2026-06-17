@@ -9,6 +9,7 @@ class LeafDetection {
   final String croppedImagePath;
   final PestType? diagnosedPest;
   final double? confidence;
+  final double? severity;
 
   const LeafDetection({
     required this.id,
@@ -19,6 +20,7 @@ class LeafDetection {
     required this.croppedImagePath,
     this.diagnosedPest,
     this.confidence,
+    this.severity,
   });
 
   LeafDetection copyWith({
@@ -30,6 +32,7 @@ class LeafDetection {
     String? croppedImagePath,
     PestType? diagnosedPest,
     double? confidence,
+    double? severity,
   }) {
     return LeafDetection(
       id: id ?? this.id,
@@ -40,11 +43,12 @@ class LeafDetection {
       croppedImagePath: croppedImagePath ?? this.croppedImagePath,
       diagnosedPest: diagnosedPest ?? this.diagnosedPest,
       confidence: confidence ?? this.confidence,
+      severity: severity ?? this.severity,
     );
   }
 
   @override
   String toString() {
-    return 'LeafDetection(id: $id, box: [$boxX, $boxY, $boxWidth, $boxHeight], crop: $croppedImagePath, pest: $diagnosedPest, conf: $confidence)';
+    return 'LeafDetection(id: $id, box: [$boxX, $boxY, $boxWidth, $boxHeight], crop: $croppedImagePath, pest: $diagnosedPest, conf: $confidence, severity: $severity)';
   }
 }

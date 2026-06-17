@@ -6,6 +6,8 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../domain/entities/pest_type.dart';
 import '../providers/diagnosis_provider.dart';
+import '../widgets/bounding_box_overlay.dart';
+import '../widgets/severity_indicator.dart';
 
 class DiagnosisResultScreen extends ConsumerStatefulWidget {
   final bool isOfflineMode;
@@ -124,6 +126,19 @@ class _DiagnosisResultScreenState extends ConsumerState<DiagnosisResultScreen> {
     final selectedLeaf = diagnosis.detectedLeaves[_selectedLeafIndex];
     final pest = selectedLeaf.diagnosedPest ?? PestType.healthy;
     final confidence = selectedLeaf.confidence ?? 1.0;
+    final severity = selectedLeaf.severity ??
+        (pest == PestType.healthy
+            ? 0.0
+            : confidence *
+                (pest == PestType.roya
+                    ? 0.95
+                    : pest == PestType.phoma
+                        ? 0.85
+                        : pest == PestType.minador
+                            ? 0.7
+                            : pest == PestType.redspider
+                                ? 0.6
+                                : 0.5));
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -145,6 +160,39 @@ class _DiagnosisResultScreenState extends ConsumerState<DiagnosisResultScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: AppSpacing.s2),
+
+                // ── Bounding Box Overlay (YOLOv8 + pest classification) ───────────
+                BoundingBoxOverlay(
+                  originalImagePath: diagnosis.originalImagePath,
+                  detectedLeaves: diagnosis.detectedLeaves,
+                  selectedIndex: _selectedLeafIndex,
+                  onLeafTapped: (index) {
+                    setState(() => _selectedLeafIndex = index);
+                  },
+                ),
+                const SizedBox(height: AppSpacing.s2),
+
+                // Instruction hint
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.touch_app_rounded,
+                      size: 14,
+                      color: AppColors.gray3,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Toca una zona para ver el detalle',
+                      style: AppTextStyles.smallTextRegular.copyWith(
+                        color: AppColors.gray3,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.s4),
+
                 // General Health Banner Card
                 Container(
                   width: double.infinity,
@@ -352,6 +400,10 @@ class _DiagnosisResultScreenState extends ConsumerState<DiagnosisResultScreen> {
                           ],
                         ),
                       ),
+                      if (pest != PestType.healthy) ...[
+                        const SizedBox(height: AppSpacing.s3),
+                        SeverityIndicator(severity: severity),
+                      ],
                       const SizedBox(height: AppSpacing.s3 + 4),
                       // Diagnosis description
                       Text(

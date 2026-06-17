@@ -239,9 +239,31 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
         }
 
         final pest = classToPest[bestClass];
+        double factor = 0.0;
+        switch (pest) {
+          case PestType.roya:
+            factor = 0.95;
+            break;
+          case PestType.phoma:
+            factor = 0.85;
+            break;
+          case PestType.minador:
+            factor = 0.7;
+            break;
+          case PestType.redspider:
+            factor = 0.6;
+            break;
+          case PestType.healthy:
+            factor = 0.0;
+            break;
+        }
+        final confidenceVal = bestProb.toDouble();
+        final severityVal = confidenceVal * factor;
+
         final updated = leaf.copyWith(
           diagnosedPest: pest,
-          confidence: bestProb.toDouble(),
+          confidence: confidenceVal,
+          severity: severityVal,
         );
         results.add(LeafDetectionModel.fromEntity(updated));
       } catch (e) {
@@ -255,7 +277,11 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
   LeafDetectionModel _classifyFallback(LeafDetectionModel leaf, String reason) {
     // TODO: replace with proper logging framework
     return LeafDetectionModel.fromEntity(
-      leaf.copyWith(diagnosedPest: PestType.healthy, confidence: 0.0),
+      leaf.copyWith(
+        diagnosedPest: PestType.healthy,
+        confidence: 0.0,
+        severity: 0.0,
+      ),
     );
   }
 

@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/network/connectivity_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/diagnosis_local_datasource.dart';
 import '../../data/datasources/diagnosis_remote_datasource.dart';
 import '../../data/repositories/diagnosis_repository_impl.dart';
@@ -11,11 +11,6 @@ import '../../domain/usecases/classify_pests_usecase.dart';
 import '../../domain/usecases/detect_leaves_usecase.dart';
 import '../../domain/usecases/get_diagnosis_history_usecase.dart';
 import '../../domain/usecases/save_diagnosis_usecase.dart';
-
-// SharedPreferences Provider - will be overridden in main.dart
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('Debe sobrescribir sharedPreferencesProvider en main.dart');
-});
 
 // Data Sources Providers
 final diagnosisLocalDataSourceProvider = Provider<DiagnosisLocalDataSource>((ref) {
