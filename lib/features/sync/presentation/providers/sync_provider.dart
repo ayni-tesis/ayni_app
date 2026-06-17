@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/connectivity_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../diagnosis/domain/repositories/diagnosis_repository.dart';
 import '../../../diagnosis/presentation/providers/diagnosis_provider.dart';
 import '../../data/datasources/sync_local_datasource.dart';
