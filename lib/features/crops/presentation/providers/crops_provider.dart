@@ -1,11 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/crops_local_datasource.dart';
 import '../../data/repositories/crops_repository_impl.dart';
 import '../../domain/entities/parcel.dart';
 import '../../domain/entities/crop.dart';
 import '../../domain/repositories/crops_repository.dart';
-import '../../../diagnosis/presentation/providers/diagnosis_provider.dart'
-    show sharedPreferencesProvider;
 
 // ─── DataSource & Repository ─────────────────────────────────────────────────
 

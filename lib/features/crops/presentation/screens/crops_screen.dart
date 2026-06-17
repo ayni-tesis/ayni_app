@@ -420,53 +420,55 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.s6),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.s4),
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.grass_outlined,
-                size: 56,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.s3),
-            Text(
-              'Sin parcelas registradas',
-              style: AppTextStyles.heading6.copyWith(color: AppColors.black2),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Crea tu primera parcela para empezar a registrar tus plantas de café.',
-              style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.s4),
-            SizedBox(
-              width: 200,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: onAddParcel,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Crear parcela'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: AppColors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.s4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.s4),
+                decoration: const BoxDecoration(
+                  color: AppColors.secondary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.grass_outlined,
+                  size: 56,
+                  color: AppColors.primary,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: AppSpacing.s3),
+              Text(
+                'Sin parcelas registradas',
+                style: AppTextStyles.heading6.copyWith(color: AppColors.black2),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Crea tu primera parcela para empezar a registrar tus plantas de café.',
+                style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.s4),
+              SizedBox(
+                width: 200,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: onAddParcel,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Crear parcela'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

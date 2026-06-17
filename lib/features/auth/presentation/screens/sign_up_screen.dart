@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
+import '../providers/auth_provider.dart';
 
-class SignUpScreen extends StatefulWidget {
+class SignUpScreen extends ConsumerStatefulWidget {
   final VoidCallback onSignUpSuccess;
   final VoidCallback onLogInTap;
 
@@ -14,75 +17,82 @@ class SignUpScreen extends StatefulWidget {
   });
 
   @override
-  State<SignUpScreen> createState() => _SignUpScreenState();
+  ConsumerState<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignUpScreenState extends State<SignUpScreen> {
+class _SignUpScreenState extends ConsumerState<SignUpScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  bool _isLoading = false;
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  void _handleSignUp() async {
-    if (_emailController.text.trim().isEmpty || _passwordController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor, ingresa correo y contraseña.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
+  Future<void> _handleSignUp() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await ref.read(authNotifierProvider.notifier).signUp(
+          email: _emailController.text,
+          password: _passwordController.text,
+          fullName: _nameController.text,
+        );
+    if (!mounted) return;
 
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 1800));
+    if (ok) {
+      await ref.read(profileNotifierProvider.notifier).ensureSeededFromAuth();
+      if (!mounted) return;
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-      
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => AlertDialog(
+        builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
           title: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 28),
+              const Icon(Icons.check_circle_rounded,
+                  color: AppColors.success, size: 28),
               const SizedBox(width: 8),
               Text('¡Registro Exitoso!', style: AppTextStyles.mediumTextBold),
             ],
           ),
           content: Text(
-            'Tu cuenta ha sido creada. Ahora puedes iniciar sesión para continuar.',
+            'Tu cuenta ha sido creada. Ya puedes empezar a usar Ayni.',
             style: AppTextStyles.bodyRegular.copyWith(color: AppColors.gray2),
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop();
+                Navigator.of(ctx).pop();
                 widget.onSignUpSuccess();
               },
               child: Text(
-                'Ir al Login',
+                'Continuar',
                 style: AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
               ),
             ),
           ],
         ),
       );
+    } else {
+      final error = ref.read(authNotifierProvider).error ??
+          'No se pudo crear la cuenta. Inténtalo de nuevo.';
+      messenger.showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: AppColors.error),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authNotifierProvider);
+
     return Scaffold(
       backgroundColor: AppColors.white,
       appBar: AppBar(
@@ -95,129 +105,85 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
       body: Stack(
         children: [
-          // Registration Form
           SafeArea(
             child: Column(
               children: [
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: AppSpacing.s2),
-                        // Title row (left title/subtitle, right avatar silhouette)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Join Ayni Today',
-                                    style: AppTextStyles.heading4.copyWith(
-                                      color: AppColors.black2,
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Create Your Blooming Account',
-                                    style: AppTextStyles.bodyRegular.copyWith(
-                                      color: AppColors.gray2,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            // Avatar silhouette icon matching Figma
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFF1F5F9),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.person,
-                                size: 36,
-                                color: Color(0xFF94A3B8),
-                              ),
-                            ),
-                          ],
+                        Text(
+                          'Únete a Ayni',
+                          style: AppTextStyles.heading4.copyWith(
+                            color: AppColors.black2,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Crea tu cuenta y empieza a proteger tu cafetal.',
+                          style: AppTextStyles.bodyRegular
+                              .copyWith(color: AppColors.gray2, fontSize: 14),
                         ),
                         const SizedBox(height: AppSpacing.s5),
-
-                        // Email Field
+                        _buildLabel('Nombre completo'),
+                        const SizedBox(height: 8),
+                        _buildField(
+                          controller: _nameController,
+                          hint: 'Juan Pérez',
+                          icon: Icons.person_outline,
+                        ),
+                        const SizedBox(height: AppSpacing.s3),
                         _buildLabel('Email'),
                         const SizedBox(height: 8),
-                        TextField(
+                        _buildField(
                           controller: _emailController,
+                          hint: 'tu@correo.com',
+                          icon: Icons.email_outlined,
                           keyboardType: TextInputType.emailAddress,
-                          style: AppTextStyles.bodyRegular.copyWith(color: AppColors.black2),
-                          decoration: InputDecoration(
-                            hintText: 'Email',
-                            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                            prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF94A3B8), size: 20),
-                            filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
+                        ),
+                        const SizedBox(height: AppSpacing.s3),
+                        _buildLabel('Contraseña'),
+                        const SizedBox(height: 8),
+                        _buildField(
+                          controller: _passwordController,
+                          hint: 'Mínimo 6 caracteres',
+                          icon: Icons.lock_outlined,
+                          obscure: _obscurePassword,
+                          suffix: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: const Color(0xFF94A3B8),
+                              size: 20,
                             ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword),
                           ),
                         ),
                         const SizedBox(height: AppSpacing.s3),
-
-                        // Password Field
-                        _buildLabel('Password'),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _passwordController,
-                          obscureText: _obscurePassword,
-                          style: AppTextStyles.bodyRegular.copyWith(color: AppColors.black2),
-                          decoration: InputDecoration(
-                            hintText: 'Password',
-                            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                            prefixIcon: const Icon(Icons.lock_outlined, color: Color(0xFF94A3B8), size: 20),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                                color: const Color(0xFF94A3B8),
-                                size: 20,
-                              ),
-                              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                            ),
-                            filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.s3 + 4),
-
-                        // "Already have an account? Log in" (Green link right under password)
                         Center(
                           child: GestureDetector(
                             onTap: widget.onLogInTap,
                             behavior: HitTestBehavior.opaque,
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 8),
                               child: RichText(
                                 text: TextSpan(
-                                  style: AppTextStyles.bodyRegular.copyWith(color: AppColors.gray2, fontSize: 14),
+                                  style: AppTextStyles.bodyRegular.copyWith(
+                                      color: AppColors.gray2, fontSize: 14),
                                   children: [
-                                    const TextSpan(text: 'Already have an account? '),
+                                    const TextSpan(
+                                        text: '¿Ya tienes cuenta? '),
                                     TextSpan(
-                                      text: 'Log in',
+                                      text: 'Inicia sesión',
                                       style: AppTextStyles.bodyBold.copyWith(
                                         color: AppColors.primary,
                                         fontSize: 14,
@@ -230,72 +196,45 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             ),
                           ),
                         ),
-
-                        const SizedBox(height: AppSpacing.s3),
-                        // Divider: —— or ——
-                        Row(
-                          children: [
-                            const Expanded(child: Divider(color: AppColors.gray5, thickness: 1)),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s2),
-                              child: Text(
-                                'or',
-                                style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray3),
-                              ),
-                            ),
-                            const Expanded(child: Divider(color: AppColors.gray5, thickness: 1)),
-                          ],
-                        ),
-                        const SizedBox(height: AppSpacing.s3 + 4),
-
-                        // Social buttons stacked vertically (exactly like Figma)
-                        _buildSocialButton(
-                          icon: _googleIcon(),
-                          label: 'Continue with Google',
-                          onTap: () {},
-                        ),
-                        const SizedBox(height: AppSpacing.s2),
-                        _buildSocialButton(
-                          icon: const Icon(Icons.apple, color: AppColors.black2, size: 24),
-                          label: 'Continue with Apple',
-                          onTap: () {},
-                        ),
-                        const SizedBox(height: AppSpacing.s2),
-                        _buildSocialButton(
-                          icon: const Icon(Icons.facebook, color: Color(0xFF1877F2), size: 24),
-                          label: 'Continue with Facebook',
-                          onTap: () {},
-                        ),
                         const SizedBox(height: AppSpacing.s4),
                       ],
                     ),
                   ),
                 ),
-                // Sign up button at the very bottom
                 Padding(
                   padding: const EdgeInsets.all(AppSpacing.s4),
                   child: SizedBox(
                     width: double.infinity,
-                    height: 56, // Accessible > 48dp
+                    height: 56,
                     child: ElevatedButton(
-                      onPressed: _handleSignUp,
+                      onPressed: auth.isLoading ? null : _handleSignUp,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         foregroundColor: AppColors.white,
-                        shape: const StadiumBorder(), // Pill shape matching Figma
+                        shape: const StadiumBorder(),
                         elevation: 0,
                       ),
-                      child: Text(
-                        'Sign up',
-                        style: AppTextStyles.bodyBold.copyWith(color: AppColors.white),
-                      ),
+                      child: auth.isLoading
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    AppColors.white),
+                              ),
+                            )
+                          : Text(
+                              'Crear cuenta',
+                              style: AppTextStyles.bodyBold
+                                  .copyWith(color: AppColors.white),
+                            ),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          if (_isLoading) _buildLoadingOverlay(),
         ],
       ),
     );
@@ -311,88 +250,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildSocialButton({
-    required Widget icon,
-    required String label,
-    required VoidCallback onTap,
+  Widget _buildField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    bool obscure = false,
+    Widget? suffix,
+    TextInputType? keyboardType,
   }) {
-    return SizedBox(
-      width: double.infinity,
-      height: 54, // Accessible > 48dp
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.black2,
-          side: const BorderSide(color: AppColors.gray5, width: 1),
-          shape: const StadiumBorder(), // Pill shape matching Figma
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      keyboardType: keyboardType,
+      style: AppTextStyles.bodyRegular.copyWith(color: AppColors.black2),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+        prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: const Color(0xFFF8FAFC),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
-        child: Row(
-          children: [
-            icon,
-            const Spacer(),
-            Text(
-              label,
-              style: AppTextStyles.bodyBold.copyWith(
-                color: AppColors.gray1,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const Spacer(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _googleIcon() {
-    return SizedBox(
-      width: 22,
-      height: 22,
-      child: Stack(
-        children: [
-          Positioned(right: 0, top: 0, child: Container(width: 11, height: 11, decoration: const BoxDecoration(color: Color(0xFFEA4335), shape: BoxShape.circle))),
-          Positioned(left: 0, top: 0, child: Container(width: 11, height: 11, decoration: const BoxDecoration(color: Color(0xFF4285F4), shape: BoxShape.circle))),
-          Positioned(right: 0, bottom: 0, child: Container(width: 11, height: 11, decoration: const BoxDecoration(color: Color(0xFFFBBC05), shape: BoxShape.circle))),
-          Positioned(left: 0, bottom: 0, child: Container(width: 11, height: 11, decoration: const BoxDecoration(color: Color(0xFF34A853), shape: BoxShape.circle))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoadingOverlay() {
-    return Container(
-      color: Colors.black.withValues(alpha: 0.4),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s5, vertical: AppSpacing.s4),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 44,
-                height: 44,
-                child: CircularProgressIndicator(
-                  strokeWidth: 4.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.s3),
-              Text(
-                'Signing up...',
-                style: AppTextStyles.bodyBold.copyWith(
-                  color: AppColors.gray1,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-        ),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
     );
   }

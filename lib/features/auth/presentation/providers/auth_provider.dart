@@ -1,0 +1,204 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../data/datasources/auth_local_datasource.dart';
+import '../../data/repositories/auth_repository_impl.dart';
+import '../../domain/entities/user.dart';
+import '../../domain/repositories/auth_repository.dart';
+import '../../domain/usecases/login_usecase.dart';
+import '../../domain/usecases/logout_usecase.dart';
+import '../../domain/usecases/signup_usecase.dart';
+
+// ─── SharedPreferences Provider ────────────────────────────────────────────
+
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError(
+      'sharedPreferencesProvider must be overridden in main.dart');
+});
+
+// ─── Data source + repository + use cases ──────────────────────────────────
+
+final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
+  return AuthLocalDataSource(
+    sharedPreferences: ref.watch(sharedPreferencesProvider),
+  );
+});
+
+final authRepositoryProvider = Provider<AuthRepository>((ref) {
+  return AuthRepositoryImpl(local: ref.watch(authLocalDataSourceProvider));
+});
+
+final loginUseCaseProvider = Provider<LoginUseCase>((ref) {
+  return LoginUseCase(ref.watch(authRepositoryProvider));
+});
+
+final signUpUseCaseProvider = Provider<SignUpUseCase>((ref) {
+  return SignUpUseCase(ref.watch(authRepositoryProvider));
+});
+
+final logoutUseCaseProvider = Provider<LogoutUseCase>((ref) {
+  return LogoutUseCase(ref.watch(authRepositoryProvider));
+});
+
+// ─── Auth state + notifier ─────────────────────────────────────────────────
+
+class AuthState {
+  final User? user;
+  final AuthSession? session;
+  final bool isLoading;
+  final String? error;
+
+  const AuthState({
+    this.user,
+    this.session,
+    this.isLoading = false,
+    this.error,
+  });
+
+  bool get isAuthenticated => user != null && session != null && !session!.isExpired;
+
+  AuthState copyWith({
+    User? user,
+    AuthSession? session,
+    bool? isLoading,
+    String? error,
+    bool clearUser = false,
+    bool clearSession = false,
+    bool clearError = true,
+  }) {
+    return AuthState(
+      user: clearUser ? null : (user ?? this.user),
+      session: clearSession ? null : (session ?? this.session),
+      isLoading: isLoading ?? this.isLoading,
+      error: clearError ? error : (error ?? this.error),
+    );
+  }
+}
+
+class AuthNotifier extends StateNotifier<AuthState> {
+  final LoginUseCase _loginUseCase;
+  final SignUpUseCase _signUpUseCase;
+  final LogoutUseCase _logoutUseCase;
+  final AuthRepository _repository;
+
+  AuthNotifier({
+    required this._loginUseCase,
+    required this._signUpUseCase,
+    required this._logoutUseCase,
+    required this._repository,
+  }) : super(const AuthState());
+
+  /// Restores the persisted session at app start. If the session
+  /// has expired the user is dropped back to the login screen.
+  Future<void> bootstrap() async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    final user = await _repository.getCurrentUser();
+    final session = await _repository.getCurrentSession();
+    state = state.copyWith(
+      user: user,
+      session: session,
+      isLoading: false,
+      clearError: true,
+    );
+  }
+
+  Future<bool> login({required String email, required String password}) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    final result = await _loginUseCase(email: email, password: password);
+    return result.fold(
+      (failure) {
+        state = state.copyWith(
+          isLoading: false,
+          error: failure.message,
+          clearError: false,
+        );
+        return false;
+      },
+      (user) async {
+        final session = await _repository.getCurrentSession();
+        state = state.copyWith(
+          user: user,
+          session: session,
+          isLoading: false,
+          clearError: true,
+        );
+        return true;
+      },
+    );
+  }
+
+  Future<bool> signUp({
+    required String email,
+    required String password,
+    required String fullName,
+  }) async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    final result = await _signUpUseCase(
+      email: email,
+      password: password,
+      fullName: fullName,
+    );
+    return result.fold(
+      (failure) {
+        state = state.copyWith(
+          isLoading: false,
+          error: failure.message,
+          clearError: false,
+        );
+        return false;
+      },
+      (user) async {
+        final session = await _repository.getCurrentSession();
+        state = state.copyWith(
+          user: user,
+          session: session,
+          isLoading: false,
+          clearError: true,
+        );
+        return true;
+      },
+    );
+  }
+
+  Future<void> refreshSession() async {
+    final result = await _repository.refreshSession();
+    result.fold(
+      (_) => _invalidate(),
+      (session) => state = state.copyWith(session: session, clearError: true),
+    );
+  }
+
+  Future<void> logout() async {
+    state = state.copyWith(isLoading: true, clearError: true);
+    await _logoutUseCase();
+    _invalidate();
+  }
+
+  void clearError() {
+    state = state.copyWith(clearError: true);
+  }
+
+  void _invalidate() {
+    state = const AuthState();
+  }
+}
+
+final authNotifierProvider =
+    StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  return AuthNotifier(
+    loginUseCase: ref.watch(loginUseCaseProvider),
+    signUpUseCase: ref.watch(signUpUseCaseProvider),
+    logoutUseCase: ref.watch(logoutUseCaseProvider),
+    repository: ref.watch(authRepositoryProvider),
+  );
+});
+
+/// Convenience provider that exposes only the current user, or `null`
+/// if the user is logged out / the session expired.
+final currentUserProvider = Provider<User?>((ref) {
+  return ref.watch(authNotifierProvider).user;
+});
+
+/// True if there is a non-expired session. Use to gate routes.
+final isAuthenticatedProvider = Provider<bool>((ref) {
+  return ref.watch(authNotifierProvider).isAuthenticated;
+});
