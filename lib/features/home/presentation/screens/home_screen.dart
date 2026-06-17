@@ -9,11 +9,19 @@ import '../../../../shared/widgets/ayni_bottom_nav.dart';
 import '../../../diagnosis/presentation/screens/diagnosis_capture_screen.dart';
 import '../../../diagnosis/presentation/screens/diagnosis_history_screen.dart';
 import '../../../diagnosis/presentation/screens/diagnosis_home_screen.dart';
+import '../../../diagnosis/presentation/screens/pest_catalog_screen.dart';
 import '../../../diagnosis/presentation/providers/diagnosis_provider.dart';
 import '../../../diagnosis/domain/entities/diagnosis.dart';
 import '../../../diagnosis/domain/entities/pest_type.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../crops/presentation/screens/crops_screen.dart';
+import '../../../notifications/presentation/providers/notifications_provider.dart';
+import '../../../notifications/presentation/screens/notifications_screen.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
+import '../../../profile/presentation/screens/profile_screen.dart';
 import '../../../sync/presentation/screens/sync_status_screen.dart';
+import 'help_screen.dart';
+import '../../../reports/presentation/screens/reports_screen.dart';
 
 final _isOfflineModeProvider = StateProvider<bool>((ref) => false);
 
@@ -39,7 +47,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _onCameraTap(bool isOfflineMode) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => DiagnosisCaptureScreen(isOfflineMode: isOfflineMode),
+        builder: (context) =>
+            DiagnosisCaptureScreen(isOfflineMode: isOfflineMode),
       ),
     );
   }
@@ -47,7 +56,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final connectivityAsync = ref.watch(connectivityStreamProvider);
-    final isOfflineMode = ref.watch(_isOfflineModeProvider) || widget.isOfflineMode;
+    final isOfflineMode =
+        ref.watch(_isOfflineModeProvider) || widget.isOfflineMode;
 
     return connectivityAsync.when(
       data: (isOnline) => _buildScaffold(isOnline, isOfflineMode),
@@ -115,8 +125,6 @@ class _HomeBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool canDiagnoseOnline = isOnline || isOfflineMode;
-
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
@@ -125,11 +133,13 @@ class _HomeBody extends StatelessWidget {
           children: [
             const SizedBox(height: AppSpacing.s2),
             if (!isOnline && !isOfflineMode) _OfflineBanner(),
-            if (isOfflineMode) _OfflineModeBanner(onConnectionModeChange: onConnectionModeChange),
-            if (!isOnline && !isOfflineMode) const SizedBox(height: AppSpacing.s2),
+            if (isOfflineMode)
+              _OfflineModeBanner(
+                onConnectionModeChange: onConnectionModeChange,
+              ),
+            if (!isOnline && !isOfflineMode)
+              const SizedBox(height: AppSpacing.s2),
             _HomeHeader(isOfflineMode: isOfflineMode, isOnline: isOnline),
-            const SizedBox(height: AppSpacing.s4),
-            _DiagnoseCard(enabled: canDiagnoseOnline, isOfflineMode: isOfflineMode),
             const SizedBox(height: AppSpacing.s4),
             _CropsOverviewCard(),
             const SizedBox(height: AppSpacing.s4),
@@ -144,19 +154,23 @@ class _HomeBody extends StatelessWidget {
   }
 }
 
-class _HomeHeader extends StatelessWidget {
+class _HomeHeader extends ConsumerWidget {
   final bool isOfflineMode;
   final bool isOnline;
 
   const _HomeHeader({required this.isOfflineMode, required this.isOnline});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final firstName =
+        ref.watch(currentUserProvider)?.fullName.split(' ').first ??
+        ref.watch(currentProfileProvider)?.fullName.split(' ').first ??
+        'Caficultor';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '¡Hola, Juan!',
+          '¡Hola, $firstName!',
           style: AppTextStyles.heading4.copyWith(color: AppColors.black2),
         ),
         const SizedBox(height: 4),
@@ -331,7 +345,10 @@ class _RecentDiagnosesSection extends ConsumerWidget {
           data: (history) {
             if (history.isEmpty) return _EmptyRecentState();
             return Column(
-              children: history.take(3).map((d) => _RecentDiagnosisTile(diagnosis: d)).toList(),
+              children: history
+                  .take(3)
+                  .map((d) => _RecentDiagnosisTile(diagnosis: d))
+                  .toList(),
             );
           },
           loading: () => const Padding(
@@ -354,7 +371,9 @@ class _RecentDiagnosisTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasInfection = diagnosis.hasInfection;
     final primaryPest = diagnosis.detectedLeaves
-        .where((l) => l.diagnosedPest != null && l.diagnosedPest != PestType.healthy)
+        .where(
+          (l) => l.diagnosedPest != null && l.diagnosedPest != PestType.healthy,
+        )
         .firstOrNull
         ?.diagnosedPest;
 
@@ -390,11 +409,17 @@ class _RecentDiagnosisTile extends StatelessWidget {
               children: [
                 Text(
                   primaryPest?.displayName ?? 'Hoja sana',
-                  style: AppTextStyles.smallTextBold.copyWith(color: AppColors.black2, fontSize: 14),
+                  style: AppTextStyles.smallTextBold.copyWith(
+                    color: AppColors.black2,
+                    fontSize: 14,
+                  ),
                 ),
                 Text(
                   '${diagnosis.detectedLeaves.length} hojas detectadas',
-                  style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray3, fontSize: 12),
+                  style: AppTextStyles.smallTextRegular.copyWith(
+                    color: AppColors.gray3,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -441,7 +466,11 @@ class _EmptyRecentState extends StatelessWidget {
               color: AppColors.secondary,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.camera_alt_outlined, color: AppColors.primary, size: 20),
+            child: const Icon(
+              Icons.camera_alt_outlined,
+              color: AppColors.primary,
+              size: 20,
+            ),
           ),
           const SizedBox(width: AppSpacing.s2),
           Expanded(
@@ -450,11 +479,16 @@ class _EmptyRecentState extends StatelessWidget {
               children: [
                 Text(
                   'Sin diagnósticos aún',
-                  style: AppTextStyles.smallTextBold.copyWith(color: AppColors.black2),
+                  style: AppTextStyles.smallTextBold.copyWith(
+                    color: AppColors.black2,
+                  ),
                 ),
                 Text(
                   'Toma tu primera foto para comenzar.',
-                  style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray3, fontSize: 12),
+                  style: AppTextStyles.smallTextRegular.copyWith(
+                    color: AppColors.gray3,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -469,17 +503,37 @@ class _PlaguesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final plagues = [
-      _PlagueInfo(name: 'Roya', icon: Icons.bug_report_rounded, color: const Color(0xFFD48F00), description: 'Manchas amarillas/anaranjadas en el envés de la hoja.'),
-      _PlagueInfo(name: 'Araña roja', icon: Icons.pest_control_rounded, color: AppColors.error, description: 'Ácaros que tejen telarañas finas en el envés.'),
-      _PlagueInfo(name: 'Phoma', icon: Icons.coronavirus_rounded, color: AppColors.gray2, description: 'Manchas oscuras y necrosis, secando los bordes.'),
-      _PlagueInfo(name: 'Minador', icon: Icons.linear_scale_rounded, color: const Color(0xFF8B4513), description: 'Caminos secos transparentes en el interior de la hoja.'),
+      _PlagueInfo(
+        name: 'Roya',
+        icon: Icons.bug_report_rounded,
+        color: const Color(0xFFD48F00),
+        description: 'Manchas amarillas/anaranjadas en el envés de la hoja.',
+      ),
+      _PlagueInfo(
+        name: 'Araña roja',
+        icon: Icons.pest_control_rounded,
+        color: AppColors.error,
+        description: 'Ácaros que tejen telarañas finas en el envés.',
+      ),
+      _PlagueInfo(
+        name: 'Phoma',
+        icon: Icons.coronavirus_rounded,
+        color: AppColors.gray2,
+        description: 'Manchas oscuras y necrosis, secando los bordes.',
+      ),
+      _PlagueInfo(
+        name: 'Minador',
+        icon: Icons.linear_scale_rounded,
+        color: const Color(0xFF8B4513),
+        description: 'Caminos secos transparentes en el interior de la hoja.',
+      ),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Enfermedades que podemos detectar',
+          'Enfermedades Comunes',
           style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2),
         ),
         const SizedBox(height: AppSpacing.s2),
@@ -536,16 +590,26 @@ class _PlagueCard extends StatelessWidget {
               children: [
                 Text(
                   plague.name,
-                  style: AppTextStyles.smallTextBold.copyWith(color: AppColors.black2, fontSize: 14),
+                  style: AppTextStyles.smallTextBold.copyWith(
+                    color: AppColors.black2,
+                    fontSize: 14,
+                  ),
                 ),
                 Text(
                   plague.description,
-                  style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray3, fontSize: 12),
+                  style: AppTextStyles.smallTextRegular.copyWith(
+                    color: AppColors.gray3,
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.check_circle_outline_rounded, color: AppColors.success, size: 18),
+          const Icon(
+            Icons.check_circle_outline_rounded,
+            color: AppColors.success,
+            size: 18,
+          ),
         ],
       ),
     );
@@ -568,85 +632,142 @@ class _AccountBody extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Center(
-            child: Stack(
-              children: [
-                Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: AppColors.gray5,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const ProfileScreen(),
                   ),
-                  child: const ClipOval(
-                    child: Icon(Icons.person, size: 56, color: AppColors.gray3),
-                  ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: AppColors.primary,
+                );
+              },
+              child: Stack(
+                children: [
+                  Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: AppColors.gray5,
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ],
                     ),
-                    child: const Icon(Icons.edit_rounded, color: AppColors.white, size: 16),
+                    child: const ClipOval(
+                      child: Icon(
+                        Icons.person,
+                        size: 56,
+                        color: AppColors.gray3,
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.edit_rounded,
+                        color: AppColors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: AppSpacing.s2),
           Text(
-            'Andrew Ainsley',
-            style: AppTextStyles.heading6.copyWith(color: AppColors.black2, fontWeight: FontWeight.w800),
+            ref.watch(currentUserProvider)?.fullName ??
+                ref.watch(currentProfileProvider)?.fullName ??
+                'Caficultor',
+            style: AppTextStyles.heading6.copyWith(
+              color: AppColors.black2,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
-            'andrew.ainsley@yourdomain.com',
-            style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
+            ref.watch(currentUserProvider)?.email ??
+                ref.watch(currentProfileProvider)?.email ??
+                '',
+            style: AppTextStyles.smallTextRegular.copyWith(
+              color: AppColors.gray2,
+            ),
           ),
           const SizedBox(height: AppSpacing.s3),
           _buildMenuItem(
             icon: Icons.notifications_none_rounded,
             title: 'Notificaciones',
-            onTap: () {},
+            trailingText: ref.watch(unreadNotificationsCountProvider) > 0
+                ? '${ref.watch(unreadNotificationsCountProvider)}'
+                : null,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const NotificationsScreen(),
+                ),
+              );
+            },
           ),
           _buildMenuItem(
             icon: Icons.grass_outlined,
             title: 'Mis cultivos',
-            onTap: () {},
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const CropsScreen(isOfflineMode: true),
+                ),
+              );
+            },
           ),
           _buildMenuItem(
             icon: Icons.sync_rounded,
             title: 'Sincronización',
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const SyncStatusScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const SyncStatusScreen(),
+                ),
+              );
+            },
+          ),
+          _buildMenuItem(
+            icon: Icons.menu_book_rounded,
+            title: 'Catálogo de plagas',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const PestCatalogScreen(),
+                ),
               );
             },
           ),
           _buildMenuItem(
             icon: Icons.help_outline_rounded,
             title: 'Ayuda',
-            onTap: () {},
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const HelpScreen()),
+              );
+            },
           ),
           _buildMenuItem(
-            icon: Icons.dark_mode_outlined,
-            title: 'Modo oscuro',
-            trailing: Switch.adaptive(
-              value: false,
-              onChanged: (val) {},
-              activeTrackColor: AppColors.primary,
-              activeThumbColor: AppColors.white,
-            ),
+            icon: Icons.analytics_outlined,
+            title: 'Reportes fitosanitarios',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const ReportsScreen()),
+              );
+            },
           ),
           _buildMenuItem(
             icon: Icons.logout_rounded,
@@ -659,21 +780,31 @@ class _AccountBody extends ConsumerWidget {
                 context: context,
                 builder: (BuildContext context) {
                   return AlertDialog(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     title: const Text('Cerrar sesión'),
-                    content: const Text('¿Estás seguro de que deseas cerrar sesión?'),
+                    content: const Text(
+                      '¿Estás seguro de que deseas cerrar sesión?',
+                    ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
                         child: const Text('Cancelar'),
                       ),
                       TextButton(
-                        onPressed: () {
+                        onPressed: () async {
                           Navigator.of(context).pop();
+                          await ref
+                              .read(authNotifierProvider.notifier)
+                              .logout();
                           ref.read(diagnosisNotifierProvider.notifier).reset();
                           if (onLogout != null) onLogout!();
                         },
-                        child: const Text('Cerrar sesión', style: TextStyle(color: AppColors.error)),
+                        child: const Text(
+                          'Cerrar sesión',
+                          style: TextStyle(color: AppColors.error),
+                        ),
                       ),
                     ],
                   );
@@ -707,7 +838,9 @@ class _AccountBody extends ConsumerWidget {
         color: Colors.transparent,
         child: ListTile(
           onTap: onTap,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           leading: Icon(icon, color: iconColor ?? AppColors.gray2, size: 22),
           title: Text(
             title,
@@ -717,18 +850,27 @@ class _AccountBody extends ConsumerWidget {
               fontSize: 15,
             ),
           ),
-          trailing: trailing ??
+          trailing:
+              trailing ??
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (trailingText != null) ...[
                     Text(
                       trailingText,
-                      style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray3, fontSize: 14),
+                      style: AppTextStyles.smallTextRegular.copyWith(
+                        color: AppColors.gray3,
+                        fontSize: 14,
+                      ),
                     ),
                     const SizedBox(width: 8),
                   ],
-                  if (showChevron) const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.gray4, size: 14),
+                  if (showChevron)
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: AppColors.gray4,
+                      size: 14,
+                    ),
                 ],
               ),
         ),
@@ -753,7 +895,11 @@ class _OfflineBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.cloud_off_rounded, size: 18, color: AppColors.warning),
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 18,
+            color: AppColors.warning,
+          ),
           const SizedBox(width: AppSpacing.s1 + 4),
           Expanded(
             child: Text(
@@ -792,7 +938,11 @@ class _OfflineModeBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.cloud_off_rounded, size: 18, color: AppColors.warning),
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 18,
+            color: AppColors.warning,
+          ),
           const SizedBox(width: AppSpacing.s1 + 4),
           Expanded(
             child: Text(
@@ -819,130 +969,6 @@ class _OfflineModeBanner extends StatelessWidget {
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: AppColors.primary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DiagnoseCard extends StatelessWidget {
-  final bool enabled;
-  final bool isOfflineMode;
-
-  const _DiagnoseCard({required this.enabled, required this.isOfflineMode});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppSpacing.s3 + 4),
-      decoration: BoxDecoration(
-        gradient: enabled
-            ? const LinearGradient(
-                colors: [Color(0xFF04A033), Color(0xFF066F24)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              )
-            : null,
-        color: enabled ? null : AppColors.gray4,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.s2),
-                decoration: BoxDecoration(
-                  color: AppColors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.camera_alt_rounded, size: 28, color: AppColors.white),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(enabled ? Icons.wifi : Icons.cloud_off, size: 14, color: AppColors.white),
-                    const SizedBox(width: 4),
-                    Text(
-                      enabled ? 'IA activa' : 'Sin conexión',
-                      style: const TextStyle(
-                        fontFamily: 'Nunito',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.s3),
-          const Text(
-            'Diagnosticar planta',
-            style: TextStyle(
-              fontFamily: 'Nunito',
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppColors.white,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Toma una foto de la hoja de café para detectar\nplagas y recibir recomendaciones.',
-            style: TextStyle(
-              fontFamily: 'Nunito',
-              fontSize: 14,
-              color: AppColors.white.withValues(alpha: 0.85),
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.s3),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: enabled ? () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => DiagnosisHomeScreen(isOfflineMode: isOfflineMode),
-                  ),
-                );
-              } : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.white,
-                foregroundColor: enabled ? AppColors.primary : AppColors.gray3,
-                disabledBackgroundColor: AppColors.white.withValues(alpha: 0.6),
-                disabledForegroundColor: AppColors.gray3,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.camera_alt_rounded, size: 20),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Diagnosticar',
-                    style: TextStyle(
-                      fontFamily: 'Nunito',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
               ),
             ),
           ),
