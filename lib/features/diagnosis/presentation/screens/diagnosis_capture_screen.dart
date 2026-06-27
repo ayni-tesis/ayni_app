@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -48,23 +49,16 @@ class _DiagnosisCaptureScreenState extends ConsumerState<DiagnosisCaptureScreen>
 
       setState(() => _isLoading = true);
 
-      // Set image in state
       ref.read(diagnosisNotifierProvider.notifier).setCapturedImage(
             image.path,
             widget.isOfflineMode,
           );
 
-      if (mounted) {
-        setState(() => _isLoading = false);
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => DiagnosisProcessingScreen(
-              imagePath: image.path,
-              isOfflineMode: widget.isOfflineMode,
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      // Ask the user which detection mode to use before starting processing.
+      await _showModeSelectionSheet(image.path);
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -76,6 +70,35 @@ class _DiagnosisCaptureScreenState extends ConsumerState<DiagnosisCaptureScreen>
         );
       }
     }
+  }
+
+  /// Shows a bottom sheet where the user picks offline (IA local) or online
+  /// (server) detection. Navigates to processing with the chosen mode.
+  Future<void> _showModeSelectionSheet(String imagePath) async {
+    final bool? useOffline = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _ModeSelectionSheet(imagePath: imagePath),
+    );
+
+    // null means the user dismissed the sheet without choosing — do nothing.
+    if (useOffline == null || !mounted) return;
+
+    // Update provider with the chosen mode before processing.
+    ref.read(diagnosisNotifierProvider.notifier).setCapturedImage(
+          imagePath,
+          useOffline,
+        );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => DiagnosisProcessingScreen(
+          imagePath: imagePath,
+          isOfflineMode: useOffline,
+        ),
+      ),
+    );
   }
 
   @override
@@ -103,7 +126,6 @@ class _DiagnosisCaptureScreenState extends ConsumerState<DiagnosisCaptureScreen>
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const SizedBox(height: AppSpacing.s4),
-                // Icon / Mascot guide
                 Center(
                   child: Container(
                     width: 96,
@@ -145,10 +167,9 @@ class _DiagnosisCaptureScreenState extends ConsumerState<DiagnosisCaptureScreen>
                   'Asegúrate de que la foto no esté borrosa.',
                 ),
                 const SizedBox(height: AppSpacing.s5),
-                // Action Buttons
                 SizedBox(
                   width: double.infinity,
-                  height: 56, // Accessible > 48dp
+                  height: 56,
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : () => _pickImage(ImageSource.camera),
                     style: ElevatedButton.styleFrom(
@@ -175,7 +196,7 @@ class _DiagnosisCaptureScreenState extends ConsumerState<DiagnosisCaptureScreen>
                 const SizedBox(height: AppSpacing.s2 + 4),
                 SizedBox(
                   width: double.infinity,
-                  height: 56, // Accessible > 48dp
+                  height: 56,
                   child: OutlinedButton(
                     onPressed: _isLoading ? null : () => _pickImage(ImageSource.gallery),
                     style: OutlinedButton.styleFrom(
@@ -219,7 +240,7 @@ class _DiagnosisCaptureScreenState extends ConsumerState<DiagnosisCaptureScreen>
                       ),
                       const SizedBox(height: AppSpacing.s2 + 4),
                       Text(
-                        'Detectando hojas con YOLO...',
+                        'Cargando imagen...',
                         style: AppTextStyles.bodyBold.copyWith(color: AppColors.gray2),
                       ),
                     ],
@@ -253,6 +274,192 @@ class _DiagnosisCaptureScreenState extends ConsumerState<DiagnosisCaptureScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Bottom sheet that lets the user pick between offline (IA local) and online
+/// (server) detection modes after selecting a photo.
+class _ModeSelectionSheet extends StatelessWidget {
+  final String imagePath;
+
+  const _ModeSelectionSheet({required this.imagePath});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.s4,
+        AppSpacing.s3,
+        AppSpacing.s4,
+        AppSpacing.s4 + MediaQuery.of(context).padding.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.gray4,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.s3),
+
+          // Image thumbnail + title
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.file(
+                  File(imagePath),
+                  width: 56,
+                  height: 56,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Elige el modo de detección',
+                      style: AppTextStyles.mediumTextBold.copyWith(color: AppColors.black2),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '¿Cómo quieres analizar esta foto?',
+                      style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray3),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.s4),
+
+          // Mode cards
+          _ModeCard(
+            icon: Icons.phone_android_rounded,
+            title: 'IA Local',
+            subtitle: 'Sin internet · Usa el modelo del dispositivo',
+            badge: 'Siempre disponible',
+            badgeColor: AppColors.success,
+            borderColor: AppColors.success,
+            onTap: () => Navigator.of(context).pop(true),
+          ),
+          const SizedBox(height: AppSpacing.s2),
+          _ModeCard(
+            icon: Icons.cloud_done_rounded,
+            title: 'Con Servidor',
+            subtitle: 'Requiere internet · Mayor precisión y Grad-CAM',
+            badge: 'Más preciso',
+            badgeColor: AppColors.primary,
+            borderColor: AppColors.primary,
+            onTap: () => Navigator.of(context).pop(false),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String badge;
+  final Color badgeColor;
+  final Color borderColor;
+  final VoidCallback onTap;
+
+  const _ModeCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.badge,
+    required this.badgeColor,
+    required this.borderColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpacing.s3),
+          decoration: BoxDecoration(
+            border: Border.all(color: borderColor.withValues(alpha: 0.4), width: 1.5),
+            borderRadius: BorderRadius.circular(14),
+            color: borderColor.withValues(alpha: 0.04),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.s2),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: badgeColor, size: 26),
+              ),
+              const SizedBox(width: AppSpacing.s2 + 4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s2),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      badge,
+                      style: TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.gray4),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

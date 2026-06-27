@@ -4,12 +4,14 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../../core/network/connectivity_service.dart';
+import '../../../../core/utils/animation_utils.dart';
 import '../../../../shared/widgets/ayni_header.dart';
 import '../../../../shared/widgets/ayni_bottom_nav.dart';
 import '../../../diagnosis/presentation/screens/diagnosis_capture_screen.dart';
 import '../../../diagnosis/presentation/screens/diagnosis_history_screen.dart';
 import '../../../diagnosis/presentation/screens/diagnosis_home_screen.dart';
 import '../../../diagnosis/presentation/screens/pest_catalog_screen.dart';
+import '../../../diagnosis/presentation/screens/pest_detail_screen.dart';
 import '../../../diagnosis/presentation/providers/diagnosis_provider.dart';
 import '../../../diagnosis/domain/entities/diagnosis.dart';
 import '../../../diagnosis/domain/entities/pest_type.dart';
@@ -89,26 +91,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildActiveBody(bool isOnline, bool isOfflineMode, bool canDiagnose) {
+    final Widget body;
     switch (_currentTabIndex) {
       case 0:
-        return _HomeBody(
+        body = _HomeBody(
           isOnline: isOnline,
           isOfflineMode: isOfflineMode,
           onConnectionModeChange: widget.onConnectionModeChange,
         );
       case 1:
-        return DiagnosisHomeScreen(isOfflineMode: isOfflineMode);
+        body = DiagnosisHomeScreen(isOfflineMode: isOfflineMode);
       case 2:
-        return CropsScreen(isOfflineMode: isOfflineMode);
+        body = CropsScreen(isOfflineMode: isOfflineMode);
       case 3:
-        return _AccountBody(onLogout: widget.onLogout);
+        body = _AccountBody(onLogout: widget.onLogout);
       default:
-        return _HomeBody(
+        body = _HomeBody(
           isOnline: isOnline,
           isOfflineMode: isOfflineMode,
           onConnectionModeChange: widget.onConnectionModeChange,
         );
     }
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutQuart,
+      switchOutCurve: Curves.easeInQuart,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      child: KeyedSubtree(key: ValueKey(_currentTabIndex), child: body),
+    );
   }
 }
 
@@ -132,20 +144,32 @@ class _HomeBody extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: AppSpacing.s2),
-            if (!isOnline && !isOfflineMode) _OfflineBanner(),
+            if (!isOnline && !isOfflineMode)
+              FadeSlideDown(child: _OfflineBanner()),
             if (isOfflineMode)
-              _OfflineModeBanner(
-                onConnectionModeChange: onConnectionModeChange,
+              FadeSlideDown(
+                child: _OfflineModeBanner(
+                  onConnectionModeChange: onConnectionModeChange,
+                ),
               ),
             if (!isOnline && !isOfflineMode)
               const SizedBox(height: AppSpacing.s2),
             _HomeHeader(isOfflineMode: isOfflineMode, isOnline: isOnline),
             const SizedBox(height: AppSpacing.s4),
-            _CropsOverviewCard(),
+            StaggeredSlideFade(
+              index: 0,
+              child: _CropsOverviewCard(),
+            ),
             const SizedBox(height: AppSpacing.s4),
-            _RecentDiagnosesSection(isOfflineMode: isOfflineMode),
+            StaggeredSlideFade(
+              index: 1,
+              child: _RecentDiagnosesSection(isOfflineMode: isOfflineMode),
+            ),
             const SizedBox(height: AppSpacing.s4),
-            _PlaguesSection(),
+            StaggeredSlideFade(
+              index: 2,
+              child: _PlaguesSection(),
+            ),
             const SizedBox(height: AppSpacing.s4),
           ],
         ),
@@ -160,47 +184,47 @@ class _HomeHeader extends ConsumerWidget {
 
   const _HomeHeader({required this.isOfflineMode, required this.isOnline});
 
+  Color get _statusColor => isOfflineMode
+      ? AppColors.warning
+      : (isOnline ? AppColors.success : AppColors.error);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final firstName =
         ref.watch(currentUserProvider)?.fullName.split(' ').first ??
-        ref.watch(currentProfileProvider)?.fullName.split(' ').first ??
-        'Caficultor';
+            ref.watch(currentProfileProvider)?.fullName.split(' ').first ??
+            'Caficultor';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '¡Hola, $firstName!',
-          style: AppTextStyles.heading4.copyWith(color: AppColors.black2),
+        FadeIn(
+          duration: const Duration(milliseconds: 400),
+          child: Text(
+            '¡Hola, $firstName!',
+            style: AppTextStyles.heading4.copyWith(color: AppColors.black2),
+          ),
         ),
         const SizedBox(height: 4),
-        Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isOfflineMode
-                    ? AppColors.warning
-                    : (isOnline ? AppColors.success : AppColors.error),
+        FadeIn(
+          duration: const Duration(milliseconds: 400),
+          delay: const Duration(milliseconds: 80),
+          child: Row(
+            children: [
+              PulsingDot(color: _statusColor, size: 8),
+              const SizedBox(width: 6),
+              Text(
+                isOfflineMode
+                    ? 'Modo sin conexión'
+                    : (isOnline ? 'En línea' : 'Sin conexión'),
+                style: TextStyle(
+                  fontFamily: 'Nunito',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _statusColor,
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              isOfflineMode
-                  ? 'Modo sin conexión'
-                  : (isOnline ? 'En línea' : 'Sin conexión'),
-              style: TextStyle(
-                fontFamily: 'Nunito',
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isOfflineMode
-                    ? AppColors.warning
-                    : (isOnline ? AppColors.success : AppColors.error),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -268,34 +292,37 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.s2 + 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: AppTextStyles.heading5.copyWith(
-              color: color,
-              fontWeight: FontWeight.w900,
+    return ScaleOnTap(
+      onTap: null,
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.s2 + 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: AppTextStyles.heading5.copyWith(
+                color: color,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: AppTextStyles.smallTextRegular.copyWith(
-              color: AppColors.gray2,
-              fontSize: 11,
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: AppTextStyles.smallTextRegular.copyWith(
+                color: AppColors.gray2,
+                fontSize: 11,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -564,53 +591,67 @@ class _PlagueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.s1 + 4),
-      padding: const EdgeInsets.all(AppSpacing.s2 + 4),
-      decoration: BoxDecoration(
-        color: AppColors.gray5.withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.gray5.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: plague.color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(plague.icon, color: plague.color, size: 20),
-          ),
-          const SizedBox(width: AppSpacing.s2),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  plague.name,
-                  style: AppTextStyles.smallTextBold.copyWith(
-                    color: AppColors.black2,
-                    fontSize: 14,
-                  ),
-                ),
-                Text(
-                  plague.description,
-                  style: AppTextStyles.smallTextRegular.copyWith(
-                    color: AppColors.gray3,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+    return ScaleOnTap(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => PestDetailScreen(
+              pestType: PestType.values.firstWhere(
+                (p) => p.displayName.toLowerCase() == plague.name.toLowerCase(),
+                orElse: () => PestType.healthy,
+              ),
             ),
           ),
-          const Icon(
-            Icons.check_circle_outline_rounded,
-            color: AppColors.success,
-            size: 18,
-          ),
-        ],
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppSpacing.s1 + 4),
+        padding: const EdgeInsets.all(AppSpacing.s2 + 4),
+        decoration: BoxDecoration(
+          color: AppColors.gray5.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.gray5.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: plague.color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(plague.icon, color: plague.color, size: 20),
+            ),
+            const SizedBox(width: AppSpacing.s2),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    plague.name,
+                    style: AppTextStyles.smallTextBold.copyWith(
+                      color: AppColors.black2,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    plague.description,
+                    style: AppTextStyles.smallTextRegular.copyWith(
+                      color: AppColors.gray3,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.check_circle_outline_rounded,
+              color: AppColors.success,
+              size: 18,
+            ),
+          ],
+        ),
       ),
     );
   }

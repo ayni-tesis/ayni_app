@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:math' show min;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -19,10 +21,58 @@ class LeafSelectionScreen extends ConsumerStatefulWidget {
 class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
   bool _isLoading = false;
 
+  // Natural pixel size of the captured image, needed to compute the
+  // letterbox rect when displaying with BoxFit.contain.
+  Size? _imageNaturalSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImageNaturalSize();
+  }
+
+  Future<void> _loadImageNaturalSize() async {
+    final path = ref.read(diagnosisNotifierProvider).capturedImagePath;
+    if (path == null) return;
+    try {
+      final bytes = await File(path).readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      if (mounted) {
+        setState(() {
+          _imageNaturalSize = Size(
+            frame.image.width.toDouble(),
+            frame.image.height.toDouble(),
+          );
+        });
+      }
+    } catch (_) {
+      // Falls back to full-container mapping if size can't be read.
+    }
+  }
+
+  /// Computes the rect (in container-local pixels) where BoxFit.contain
+  /// actually draws the image. Bounding box coords must be mapped to this
+  /// rect, not to the full container, to stay aligned with the visible image.
+  Rect _imageDisplayRect(Size container) {
+    final natural = _imageNaturalSize;
+    if (natural == null || natural.width == 0 || natural.height == 0) {
+      return Offset.zero & container;
+    }
+    final scale = min(
+      container.width / natural.width,
+      container.height / natural.height,
+    );
+    final displayW = natural.width * scale;
+    final displayH = natural.height * scale;
+    final offsetX = (container.width - displayW) / 2;
+    final offsetY = (container.height - displayH) / 2;
+    return Rect.fromLTWH(offsetX, offsetY, displayW, displayH);
+  }
+
   Future<void> _runClassification() async {
     setState(() => _isLoading = true);
 
-    // Run Stage 2: Pest classification on all detected leaves
     final success = await ref.read(diagnosisNotifierProvider.notifier).runPestClassification();
 
     if (mounted) {
@@ -48,7 +98,8 @@ class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(diagnosisNotifierProvider);
-    final originalImageFile = state.capturedImagePath != null ? File(state.capturedImagePath!) : null;
+    final originalImageFile =
+        state.capturedImagePath != null ? File(state.capturedImagePath!) : null;
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -70,7 +121,7 @@ class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Original Image with Bounding Boxes
+              // ── Image + bounding boxes ──────────────────────────────────────
               if (originalImageFile != null)
                 Expanded(
                   flex: 3,
@@ -83,20 +134,25 @@ class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
                     clipBehavior: Clip.antiAlias,
                     child: LayoutBuilder(
                       builder: (context, constraints) {
+                        final containerSize = constraints.biggest;
+                        final imageRect = _imageDisplayRect(containerSize);
+
                         return Stack(
                           fit: StackFit.expand,
                           children: [
+                            // Full image — contain keeps every pixel visible.
                             Image.file(
                               originalImageFile,
-                              fit: BoxFit.cover,
+                              fit: BoxFit.contain,
                             ),
-                            // Render Bounding Boxes
+
+                            // Bounding boxes mapped to the letterboxed image rect.
                             ...state.detectedLeaves.map((leaf) {
                               return Positioned(
-                                left: leaf.boxX * constraints.maxWidth,
-                                top: leaf.boxY * constraints.maxHeight,
-                                width: leaf.boxWidth * constraints.maxWidth,
-                                height: leaf.boxHeight * constraints.maxHeight,
+                                left: imageRect.left + leaf.boxX * imageRect.width,
+                                top: imageRect.top + leaf.boxY * imageRect.height,
+                                width: leaf.boxWidth * imageRect.width,
+                                height: leaf.boxHeight * imageRect.height,
                                 child: Container(
                                   decoration: BoxDecoration(
                                     border: Border.all(
@@ -116,7 +172,8 @@ class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
                                     alignment: Alignment.topLeft,
                                     child: Container(
                                       color: AppColors.primary,
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4, vertical: 2),
                                       child: const Text(
                                         'Hoja de Café',
                                         style: TextStyle(
@@ -136,8 +193,10 @@ class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
                     ),
                   ),
                 ),
+
               const SizedBox(height: AppSpacing.s3),
-              // Crop previews and action
+
+              // ── Crops + action button ───────────────────────────────────────
               Expanded(
                 flex: 2,
                 child: Padding(
@@ -155,7 +214,6 @@ class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
                         style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
                       ),
                       const SizedBox(height: AppSpacing.s2),
-                      // Horizontal Crops list
                       SizedBox(
                         height: 100,
                         child: ListView.builder(
@@ -204,9 +262,11 @@ class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
                       const Spacer(),
                       SizedBox(
                         width: double.infinity,
-                        height: 56, // Accessible > 48dp
+                        height: 56,
                         child: ElevatedButton(
-                          onPressed: _isLoading || state.detectedLeaves.isEmpty ? null : _runClassification,
+                          onPressed: _isLoading || state.detectedLeaves.isEmpty
+                              ? null
+                              : _runClassification,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             foregroundColor: AppColors.white,
@@ -228,6 +288,8 @@ class _LeafSelectionScreenState extends ConsumerState<LeafSelectionScreen> {
               ),
             ],
           ),
+
+          // ── Loading overlay ─────────────────────────────────────────────────
           if (_isLoading)
             Container(
               color: Colors.black.withValues(alpha: 0.4),

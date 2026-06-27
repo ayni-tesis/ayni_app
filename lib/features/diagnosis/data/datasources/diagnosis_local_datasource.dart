@@ -74,8 +74,9 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
     // YOLOv8 postprocessing: [1, 5, 8400] → row-major [5, 8400]
     // Row 0: cx, Row 1: cy, Row 2: w, Row 3: h, Row 4: objectness score
     final candidates = <_YoloCandidate>[];
-    // Minimum confidence to consider a detection valid — raised to reduce false positives
-    const confThresh = 0.50;
+    // Minimum confidence to consider a detection valid.
+    // At 0.65 the model must be fairly certain before accepting a region as leaf.
+    const confThresh = 0.65;
 
     for (int col = 0; col < 8400; col++) {
       final confidence = outputBuffer[4 * 8400 + col];
@@ -85,9 +86,9 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
         final w = outputBuffer[2 * 8400 + col];
         final h = outputBuffer[3 * 8400 + col];
 
-        // Filter out detections that are too small (likely noise)
-        // A valid leaf should occupy at least 2% of the 640x640 input
-        if (w * 640 * h * 640 < 0.02 * 640 * 640) continue;
+        // Filter out detections that are too small (likely noise).
+        // A valid leaf should occupy at least 4% of the 640x640 input.
+        if (w * 640 * h * 640 < 0.04 * 640 * 640) continue;
 
         candidates.add(_YoloCandidate(
           cx: cx, cy: cy, w: w, h: h, confidence: confidence,
@@ -180,10 +181,10 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
   Future<List<LeafDetectionModel>> classifyPests(List<LeafDetectionModel> leaves) async {
     await _initModels();
 
-    // ImageNet normalization
-    const mean = [0.485, 0.456, 0.406];
-    const std  = [0.229, 0.224, 0.225];
-    // Class index mapping: 0=roya, 1=redspider, 2=phoma, 3=healthy, 4=minador
+    // EfficientNetB0 TFLite: input esperado [0, 1] simple (el rescale está
+    // incluido en el modelo durante la conversión Keras→TFLite).
+    // No usar ImageNet mean/std — eso es para modelos que esperan [-1, 1].
+    // Class index mapping: 0=rust, 1=redspider, 2=phoma, 3=nodisease, 4=miner
     const classToPest = [
       PestType.roya, PestType.redspider, PestType.phoma,
       PestType.healthy, PestType.minador,
@@ -206,21 +207,24 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
           continue;
         }
 
-        // Resize to 224x224 for EfficientNet
+        // Resize to 224x224 for EfficientNet — bilinear para coincidir con
+        // tf.image.resize() que usa bilinear por defecto en el entrenamiento.
         final resized = img_lib.copyResize(
           img, width: 224, height: 224,
-          interpolation: img_lib.Interpolation.nearest,
+          interpolation: img_lib.Interpolation.linear,
         );
 
-        // Preprocess: NHWC, normalize with ImageNet mean/std
+        // Preprocess: NHWC, float32 en rango [0, 255].
+        // EfficientNetB0 incluye su propio rescaling internamente y espera
+        // este rango — igual que preprocess_for_cnn() del script de entrenamiento.
         final inputBuffer = Float32List(1 * 224 * 224 * 3);
         int idx = 0;
         for (int y = 0; y < 224; y++) {
           for (int x = 0; x < 224; x++) {
             final pixel = resized.getPixel(x, y);
-            inputBuffer[idx++] = ((pixel.r / 255.0) - mean[0]) / std[0];
-            inputBuffer[idx++] = ((pixel.g / 255.0) - mean[1]) / std[1];
-            inputBuffer[idx++] = ((pixel.b / 255.0) - mean[2]) / std[2];
+            inputBuffer[idx++] = pixel.r.toDouble();
+            inputBuffer[idx++] = pixel.g.toDouble();
+            inputBuffer[idx++] = pixel.b.toDouble();
           }
         }
 
@@ -274,13 +278,18 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
     return results;
   }
 
+  /// Returns a LeafDetection with null pest — the UI will show "Desconocido".
+  /// Only call this when classification genuinely cannot run (no file, decode fail).
+  /// Errors should be surfaced to the user, not silently masked as "healthy".
   LeafDetectionModel _classifyFallback(LeafDetectionModel leaf, String reason) {
-    // TODO: replace with proper logging framework
+    // Log for debugging; the UI will show "Desconocido" since pest is null.
+    // ignore: avoid_print
+    print('[DiagnosisLocalDataSource] _classifyFallback: $reason');
     return LeafDetectionModel.fromEntity(
       leaf.copyWith(
-        diagnosedPest: PestType.healthy,
-        confidence: 0.0,
-        severity: 0.0,
+        diagnosedPest: null, // null → UI muestra "Desconocido"
+        confidence: null,
+        severity: null,
       ),
     );
   }

@@ -17,6 +17,7 @@ class ProfileLocalDataSource {
     if (raw == null || raw.isEmpty) return null;
     final json = jsonDecode(raw) as Map<String, dynamic>;
     return FarmerProfile(
+      userId: json['userId'] as String?,
       fullName: json['fullName'] as String,
       email: json['email'] as String,
       phone: json['phone'] as String?,
@@ -34,6 +35,7 @@ class ProfileLocalDataSource {
 
   Future<void> save(FarmerProfile profile) async {
     final json = {
+      'userId': profile.userId,
       'fullName': profile.fullName,
       'email': profile.email,
       'phone': profile.phone,

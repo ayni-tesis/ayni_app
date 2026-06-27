@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/connectivity_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/notifications_fcm_datasource.dart';
 import '../../data/datasources/notifications_local_datasource.dart';
+import '../../data/datasources/notification_remote_datasource.dart';
 import '../../data/repositories/notifications_repository_impl.dart';
 import '../../domain/entities/notification_item.dart';
 import '../../domain/repositories/notifications_repository.dart';
@@ -16,20 +18,25 @@ final notificationsLocalDataSourceProvider =
   return NotificationsLocalDataSource(sharedPreferences: prefs);
 });
 
+final notificationRemoteDataSourceProvider =
+    Provider<NotificationRemoteDataSource>((ref) {
+  return NotificationRemoteDataSource(
+    api: ref.watch(apiClientProvider),
+  );
+});
+
 // ─── Repository ────────────────────────────────────────────────────────────
 
 final notificationsRepositoryProvider =
     Provider<NotificationsRepository>((ref) {
-  // The repository owns the FCM data source because it needs to bridge
-  // the FCM callbacks into its own broadcast streams. We pass no-op
-  // callbacks because the repository creates its own live FCM source
-  // internally for the wiring — see NotificationsRepositoryImpl.
   return NotificationsRepositoryImpl(
     fcm: NotificationsFcmDataSource(
       onMessageReceived: (_) {},
       onMessageOpened: (_) {},
     ),
     local: ref.watch(notificationsLocalDataSourceProvider),
+    remote: ref.watch(notificationRemoteDataSourceProvider),
+    connectivity: ref.watch(connectivityServiceProvider),
   );
 });
 
@@ -125,6 +132,7 @@ class NotificationsNotifier
 final notificationsProvider = StateNotifierProvider<NotificationsNotifier,
     AsyncValue<List<NotificationItem>>>((ref) {
   final local = ref.watch(notificationsLocalDataSourceProvider);
+  final remote = ref.watch(notificationRemoteDataSourceProvider);
 
   // The repository owns the FCM stream bridge. To make the FCM source
   // also forward incoming messages to the repository, the repository
@@ -136,7 +144,12 @@ final notificationsProvider = StateNotifierProvider<NotificationsNotifier,
     onMessageOpened: (_) {},
   );
 
-  final repo = NotificationsRepositoryImpl(fcm: fcm, local: local);
+  final repo = NotificationsRepositoryImpl(
+    fcm: fcm,
+    local: local,
+    remote: remote,
+    connectivity: ref.watch(connectivityServiceProvider),
+  );
   final notifier = NotificationsNotifier(repo, fcm);
   ref.onDispose(() {
     repo.dispose();

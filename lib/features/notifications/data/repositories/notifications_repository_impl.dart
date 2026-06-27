@@ -1,21 +1,26 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
+import '../../../../core/network/connectivity_service.dart';
 import '../../domain/entities/notification_item.dart';
 import '../../domain/repositories/notifications_repository.dart';
 import '../datasources/notifications_fcm_datasource.dart';
 import '../datasources/notifications_local_datasource.dart';
+import '../datasources/notification_remote_datasource.dart';
+import '../models/notification_api_models.dart';
 
-/// Composition of the FCM remote source (push delivery) and the local
-/// SharedPreferences store (in-app list). All read APIs come from the
-/// local store; writes are mirrored to the local store so the list
-/// survives offline use.
+/// Composition of FCM (push delivery), remote API (server sync), and local
+/// SharedPreferences store (offline access).
 ///
-/// The repository bridges the FCM data source's callbacks into its own
-/// broadcast streams, and persists every received notification so the
-/// in-app list stays in sync with what the user actually saw in the
-/// system tray.
+/// Read strategy: when online, fetch from server and use as source of truth;
+/// when offline, fall back to SharedPreferences.
+///
+/// Write strategy: always persist locally first, then sync to server when online.
 class NotificationsRepositoryImpl implements NotificationsRepository {
   final NotificationsFcmDataSource _fcm;
   final NotificationsLocalDataSource _local;
+  final NotificationRemoteDataSource _remote;
+  final ConnectivityService _connectivity;
+
   bool _callbacksWired = false;
 
   final StreamController<NotificationItem> _receivedController =
@@ -26,11 +31,9 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
   NotificationsRepositoryImpl({
     required this._fcm,
     required this._local,
+    required this._remote,
+    required this._connectivity,
   }) {
-    // Bridge: every FCM message gets persisted and forwarded to our
-    // broadcast stream so the in-app notifier can refresh. We swap
-    // the placeholder callbacks the data source was constructed with
-    // for the real handlers that have access to the local store.
     if (!_callbacksWired) {
       _fcm.onMessageReceived = _handleReceived;
       _fcm.onMessageOpened = _handleOpened;
@@ -58,28 +61,79 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
   Future<void> saveLocally(NotificationItem item) => _local.save(item);
 
   @override
-  Future<List<NotificationItem>> getAll() => _local.getAll();
+  Future<List<NotificationItem>> getAll() async {
+    try {
+      final isOnline = await _connectivity.isConnected();
+      if (isOnline) {
+        // Server as source of truth — fetch and persist
+        final serverPage = await _remote.getNotifications();
+        final serverItems = serverPage.content.map(_toNotificationItem).toList();
+        // Persist server items locally for offline access
+        for (final item in serverItems) {
+          await _local.save(item);
+        }
+        return serverItems;
+      }
+    } on DioException {
+      // Fall through to local
+    }
+
+    return _local.getAll();
+  }
 
   @override
-  Future<void> markAsRead(String id) => _local.markAsRead(id);
+  Future<void> markAsRead(String id) async {
+    // Always update local first
+    await _local.markAsRead(id);
+
+    // Sync to server if online
+    try {
+      final isOnline = await _connectivity.isConnected();
+      if (isOnline) {
+        await _remote.markAsRead(id);
+      }
+    } on DioException {
+      // Already marked locally; will sync later
+    }
+  }
 
   @override
-  Future<void> markAllAsRead() => _local.markAllAsRead();
+  Future<void> markAllAsRead() async {
+    await _local.markAllAsRead();
+
+    try {
+      final isOnline = await _connectivity.isConnected();
+      if (isOnline) {
+        await _remote.markAllAsRead();
+      }
+    } on DioException {
+      // Already marked locally
+    }
+  }
 
   @override
-  Future<void> delete(String id) => _local.delete(id);
+  Future<void> delete(String id) async {
+    await _local.delete(id);
+
+    try {
+      final isOnline = await _connectivity.isConnected();
+      if (isOnline) {
+        await _remote.deleteNotification(id);
+      }
+    } on DioException {
+      // Already deleted locally
+    }
+  }
 
   @override
   Future<void> clear() => _local.clear();
 
-  /// Closes the broadcast streams. Call from app teardown if you ever
-  /// rebuild the repository.
   void dispose() {
     _receivedController.close();
     _openedController.close();
   }
 
-  // ─── private ───────────────────────────────────────────────────────────
+  // ─── Private ───────────────────────────────────────────────────────────
 
   Future<void> _handleReceived(NotificationItem item) async {
     await _local.save(item);
@@ -87,8 +141,6 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
   }
 
   Future<void> _handleOpened(NotificationItem item) async {
-    // The FCM source emits a stub (id only) for tray taps. Hydrate
-    // the full record from disk before forwarding.
     final list = await _local.getAll();
     final match = list.firstWhere(
       (n) => n.id == item.id,
@@ -98,5 +150,35 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
       await _local.markAsRead(match.id);
     }
     _openedController.add(match.copyWith(isRead: true));
+  }
+
+  NotificationItem _toNotificationItem(NotificationResponse r) {
+    return NotificationItem(
+      id: r.id,
+      title: r.title,
+      body: r.body,
+      receivedAt: r.receivedAt,
+      isRead: r.isRead,
+      type: _parseType(r.type),
+      imageUrl: r.imageUrl,
+      data: r.dataJson ?? const {},
+    );
+  }
+
+  NotificationType _parseType(String apiType) {
+    switch (apiType.toUpperCase()) {
+      case 'SYNC_COMPLETED':
+        return NotificationType.syncCompleted;
+      case 'PEST_ALERT':
+        return NotificationType.pestAlert;
+      case 'RECOMMENDATION':
+        return NotificationType.recommendation;
+      case 'DIAGNOSIS_COMPLETE':
+        return NotificationType.diagnosisComplete;
+      case 'SYSTEM_UPDATE':
+        return NotificationType.systemUpdate;
+      default:
+        return NotificationType.other;
+    }
   }
 }

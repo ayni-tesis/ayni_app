@@ -3,6 +3,8 @@ import '../../../../core/network/connectivity_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/diagnosis_local_datasource.dart';
 import '../../data/datasources/diagnosis_remote_datasource.dart';
+import '../../data/datasources/history_remote_datasource.dart';
+import '../../data/models/history_api_models.dart';
 import '../../data/repositories/diagnosis_repository_impl.dart';
 import '../../domain/entities/diagnosis.dart';
 import '../../domain/entities/leaf_detection.dart';
@@ -19,7 +21,9 @@ final diagnosisLocalDataSourceProvider = Provider<DiagnosisLocalDataSource>((ref
 });
 
 final diagnosisRemoteDataSourceProvider = Provider<DiagnosisRemoteDataSource>((ref) {
-  return const DiagnosisRemoteDataSourceImpl();
+  return DiagnosisRemoteDataSourceImpl(
+    api: ref.watch(apiClientProvider),
+  );
 });
 
 // Repository Provider
@@ -53,6 +57,29 @@ final saveDiagnosisUseCaseProvider = Provider<SaveDiagnosisUseCase>((ref) {
 final getDiagnosisHistoryUseCaseProvider = Provider<GetDiagnosisHistoryUseCase>((ref) {
   final repo = ref.watch(diagnosisRepositoryProvider);
   return GetDiagnosisHistoryUseCase(repo);
+});
+
+// ─── History remote (server) ─────────────────────────────────────────────────
+
+final historyRemoteDataSourceProvider = Provider<HistoryRemoteDataSource>((ref) {
+  return HistoryRemoteDataSource(
+    api: ref.watch(apiClientProvider),
+  );
+});
+
+/// GET /history — historial paginado del servidor.
+final serverHistoryProvider = FutureProvider.family<DiagnosisHistoryPage, int>((
+  ref,
+  page,
+) async {
+  final remote = ref.watch(historyRemoteDataSourceProvider);
+  return remote.getHistory(page: page, size: 20);
+});
+
+/// GET /history/stats — estadísticas de plagas del servidor.
+final serverHistoryStatsProvider = FutureProvider<HistoryStatsResponse>((ref) async {
+  final remote = ref.watch(historyRemoteDataSourceProvider);
+  return remote.getHistoryStats();
 });
 
 // Diagnosis Flow State definition

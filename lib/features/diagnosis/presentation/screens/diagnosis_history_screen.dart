@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../../core/utils/animation_utils.dart';
 import '../../domain/entities/pest_type.dart';
 import '../../domain/entities/diagnosis.dart';
 import '../providers/diagnosis_provider.dart';
@@ -94,8 +95,10 @@ class DiagnosisHistoryScreen extends ConsumerWidget {
               final formattedDate = DateFormat('dd MMM yyyy, hh:mm a').format(diagnosis.dateTime);
               final isOriginalFileExists = File(diagnosis.originalImagePath).existsSync();
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: AppSpacing.s3),
+              return StaggeredSlideFade(
+                index: index,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: AppSpacing.s3),
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -231,7 +234,7 @@ class DiagnosisHistoryScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-              );
+              ));
             },
           );
         },

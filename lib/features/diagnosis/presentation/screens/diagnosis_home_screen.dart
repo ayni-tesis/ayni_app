@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../../core/utils/animation_utils.dart';
 import '../../domain/entities/diagnosis.dart';
 import '../../domain/entities/pest_type.dart';
 import '../providers/diagnosis_provider.dart';
@@ -27,60 +28,78 @@ class DiagnosisHomeScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ─── Mode indicator ─────────────────────────────────────────────
-            _ModeBanner(isOfflineMode: isOfflineMode),
+            FadeSlideDown(child: _ModeBanner(isOfflineMode: isOfflineMode)),
             const SizedBox(height: AppSpacing.s4),
 
             // ─── Primary action: take photo ───────────────────────────────────
-            _TakePhotoCard(isOfflineMode: isOfflineMode),
+            StaggeredSlideFade(
+              index: 0,
+              child: _TakePhotoCard(isOfflineMode: isOfflineMode),
+            ),
             const SizedBox(height: AppSpacing.s3),
 
             // ─── Quick options ───────────────────────────────────────────────
-            Row(
-              children: [
-                Expanded(
-                  child: _QuickOptionCard(
-                    icon: Icons.photo_library_outlined,
-                    label: 'Desde galería',
-                    onTap: () => _openCapture(context, fromGallery: true),
+            StaggeredSlideFade(
+              index: 1,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ScaleOnTap(
+                      onTap: () => _openCapture(context, fromGallery: true),
+                      child: _QuickOptionCard(
+                        icon: Icons.photo_library_outlined,
+                        label: 'Desde galería',
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: AppSpacing.s2),
-                Expanded(
-                  child: _QuickOptionCard(
-                    icon: Icons.history_rounded,
-                    label: 'Último resultado',
-                    onTap: () {
-                      historyAsync.whenData((history) {
-                        if (history.isNotEmpty) {
-                          _openResult(context, history.first);
-                        }
-                      });
-                    },
+                  const SizedBox(width: AppSpacing.s2),
+                  Expanded(
+                    child: ScaleOnTap(
+                      onTap: () {
+                        historyAsync.whenData((history) {
+                          if (history.isNotEmpty) {
+                            _openResult(context, history.first);
+                          }
+                        });
+                      },
+                      child: _QuickOptionCard(
+                        icon: Icons.history_rounded,
+                        label: 'Último resultado',
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: AppSpacing.s4),
 
             // ─── Recent diagnoses ───────────────────────────────────────────────
-            Text(
-              'Diagnósticos recientes',
-              style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2),
+            StaggeredSlideFade(
+              index: 2,
+              child: Text(
+                'Diagnósticos recientes',
+                style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2),
+              ),
             ),
             const SizedBox(height: AppSpacing.s2),
             historyAsync.when(
               data: (history) {
                 if (history.isEmpty) {
-                  return _EmptyHistoryState();
+                  return StaggeredSlideFade(
+                    index: 3,
+                    child: _EmptyHistoryState(),
+                  );
                 }
                 return Column(
-                  children: history
-                      .take(5)
-                      .map((d) => _RecentDiagnosisTile(
-                            diagnosis: d,
-                            onTap: () => _openResult(context, d),
-                          ))
-                      .toList(),
+                  children: history.take(5).toList().asMap().entries.map((e) {
+                    return StaggeredSlideFade(
+                      index: 3 + e.key,
+                      child: _RecentDiagnosisTile(
+                        diagnosis: e.value,
+                        onTap: () => _openResult(context, e.value),
+                      ),
+                    );
+                  }).toList(),
                 );
               },
               loading: () => const Center(
@@ -275,41 +294,36 @@ class _TakePhotoCard extends StatelessWidget {
 class _QuickOptionCard extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
 
   const _QuickOptionCard({
     required this.icon,
     required this.label,
-    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.s2 + 4),
-        decoration: BoxDecoration(
-          color: AppColors.gray5.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.gray4),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 24, color: AppColors.primary),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'Nunito',
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.black2,
-              ),
-              textAlign: TextAlign.center,
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s2 + 4),
+      decoration: BoxDecoration(
+        color: AppColors.gray5.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.gray4),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 24, color: AppColors.primary),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Nunito',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.black2,
             ),
-          ],
-        ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

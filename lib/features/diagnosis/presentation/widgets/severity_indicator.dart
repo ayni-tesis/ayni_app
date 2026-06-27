@@ -38,11 +38,14 @@ class SeverityIndicator extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(
-              'Severidad de la infección:',
-              style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
+            Flexible(
+              child: Text(
+                'Severidad de la infección:',
+                style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             Text(
               '$label (${(clampedSeverity * 100).toStringAsFixed(1)}%)',
               style: AppTextStyles.smallTextBold.copyWith(

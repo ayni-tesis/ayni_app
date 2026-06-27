@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/network/connectivity_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/profile_local_datasource.dart';
+import '../../data/datasources/profile_remote_datasource.dart';
 import '../../data/repositories/profile_repository_impl.dart';
 import '../../domain/entities/farmer_profile.dart';
 import '../../domain/repositories/profile_repository.dart';
@@ -11,9 +13,17 @@ final profileLocalDataSourceProvider = Provider<ProfileLocalDataSource>((ref) {
   );
 });
 
+final profileRemoteDataSourceProvider = Provider<ProfileRemoteDataSource>((ref) {
+  return ProfileRemoteDataSource(
+    api: ref.watch(apiClientProvider),
+  );
+});
+
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   return ProfileRepositoryImpl(
+    remote: ref.watch(profileRemoteDataSourceProvider),
     local: ref.watch(profileLocalDataSourceProvider),
+    connectivity: ref.watch(connectivityServiceProvider),
   );
 });
 

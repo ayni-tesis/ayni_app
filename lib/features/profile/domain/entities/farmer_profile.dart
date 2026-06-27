@@ -2,6 +2,7 @@
 /// caficultor's contact + farm metadata. When the backend lands the
 /// shape mirrors `FarmerProfile` in the `user-service` (CLAUDE.md §5.4).
 class FarmerProfile {
+  final String? userId; // null para perfiles locales; el API asigna el userId del JWT
   final String fullName;
   final String email;
   final String? phone;
@@ -16,6 +17,7 @@ class FarmerProfile {
   final DateTime updatedAt;
 
   const FarmerProfile({
+    this.userId,
     required this.fullName,
     required this.email,
     this.phone,
@@ -31,6 +33,7 @@ class FarmerProfile {
   });
 
   FarmerProfile copyWith({
+    String? userId,
     String? fullName,
     String? email,
     String? phone,
@@ -45,6 +48,7 @@ class FarmerProfile {
     DateTime? updatedAt,
   }) {
     return FarmerProfile(
+      userId: userId ?? this.userId,
       fullName: fullName ?? this.fullName,
       email: email ?? this.email,
       phone: phone ?? this.phone,

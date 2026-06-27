@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../../core/utils/animation_utils.dart';
 import '../../domain/entities/pest_type.dart';
 import 'diagnosis_capture_screen.dart';
 
@@ -56,8 +57,10 @@ class PestDetailScreen extends StatelessWidget {
                   children: [
                     const SizedBox(height: AppSpacing.s2),
                     // Hero Icon Card
-                    Container(
-                      width: double.infinity,
+                    FadeIn(
+                      duration: const Duration(milliseconds: 400),
+                      child: Container(
+                        width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 36),
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.08),
@@ -104,6 +107,7 @@ class PestDetailScreen extends StatelessWidget {
                           ),
                         ],
                       ),
+                    ),
                     ),
                     const SizedBox(height: AppSpacing.s4),
 

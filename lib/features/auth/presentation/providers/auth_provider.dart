@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/network/api_client.dart';
 import '../../data/datasources/auth_local_datasource.dart';
+import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/entities/user.dart';
 import '../../domain/repositories/auth_repository.dart';
@@ -15,7 +17,15 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
       'sharedPreferencesProvider must be overridden in main.dart');
 });
 
-// ─── Data source + repository + use cases ──────────────────────────────────
+// ─── API client ────────────────────────────────────────────────────────────
+
+final apiClientProvider = Provider<ApiClient>((ref) {
+  return ApiClient(
+    sharedPreferences: ref.watch(sharedPreferencesProvider),
+  );
+});
+
+// ─── Data sources ──────────────────────────────────────────────────────────
 
 final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
   return AuthLocalDataSource(
@@ -23,8 +33,20 @@ final authLocalDataSourceProvider = Provider<AuthLocalDataSource>((ref) {
   );
 });
 
+final authRemoteDataSourceProvider = Provider<AuthRemoteDataSource>((ref) {
+  return AuthRemoteDataSource(
+    api: ref.watch(apiClientProvider),
+  );
+});
+
+// ─── Repository + use cases ────────────────────────────────────────────────
+
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepositoryImpl(local: ref.watch(authLocalDataSourceProvider));
+  return AuthRepositoryImpl(
+    remote: ref.watch(authRemoteDataSourceProvider),
+    local: ref.watch(authLocalDataSourceProvider),
+    api: ref.watch(apiClientProvider),
+  );
 });
 
 final loginUseCaseProvider = Provider<LoginUseCase>((ref) {
