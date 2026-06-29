@@ -91,6 +91,7 @@ class DiagnosisState {
   final List<LeafDetection> detectedLeaves;
   final String? error;
   final Diagnosis? completedDiagnosis;
+  final String? detectionImageUrl;
 
   const DiagnosisState({
     this.capturedImagePath,
@@ -100,6 +101,7 @@ class DiagnosisState {
     required this.detectedLeaves,
     this.error,
     this.completedDiagnosis,
+    this.detectionImageUrl,
   });
 
   factory DiagnosisState.initial({bool isOffline = false}) {
@@ -119,6 +121,7 @@ class DiagnosisState {
     List<LeafDetection>? detectedLeaves,
     String? error,
     Diagnosis? completedDiagnosis,
+    String? detectionImageUrl,
   }) {
     return DiagnosisState(
       capturedImagePath: capturedImagePath ?? this.capturedImagePath,
@@ -128,6 +131,7 @@ class DiagnosisState {
       detectedLeaves: detectedLeaves ?? this.detectedLeaves,
       error: error, // Clear error if not explicitly passed
       completedDiagnosis: completedDiagnosis ?? this.completedDiagnosis,
+      detectionImageUrl: detectionImageUrl ?? this.detectionImageUrl,
     );
   }
 }
@@ -166,9 +170,11 @@ class DiagnosisNotifier extends StateNotifier<DiagnosisState> {
         return false;
       },
       (leaves) {
+        final latestImageUrl = _ref.read(diagnosisRepositoryProvider).latestDetectionImageUrl;
         state = state.copyWith(
           isDetectingLeaves: false,
           detectedLeaves: leaves,
+          detectionImageUrl: latestImageUrl,
         );
         return true;
       },

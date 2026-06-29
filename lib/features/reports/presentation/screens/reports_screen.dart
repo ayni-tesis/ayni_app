@@ -1,13 +1,18 @@
-import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:share_plus/share_plus.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../diagnosis/domain/entities/diagnosis.dart';
 import '../../../diagnosis/domain/entities/pest_type.dart';
 import '../../../diagnosis/presentation/providers/diagnosis_provider.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
@@ -17,14 +22,323 @@ class ReportsScreen extends ConsumerStatefulWidget {
 }
 
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
-  // Mock action processing state
   bool _isExporting = false;
-  double _exportProgress = 0.0;
-  String _exportStep = '';
+
+  // ── CSV ─────────────────────────────────────────────────────────────────────
+
+  Future<File> _buildCsvFile(List<Diagnosis> history) async {
+    final buffer = StringBuffer();
+    buffer.writeln(
+      'id_diag,fecha,latitud,longitud,offline,cantidad_hojas,plagas_detectadas,confianza_promedio',
+    );
+
+    for (final d in history) {
+      final dateStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(d.dateTime);
+      final lat = d.latitude?.toStringAsFixed(5) ?? '';
+      final lng = d.longitude?.toStringAsFixed(5) ?? '';
+      final offline = d.isOffline ? 'SI' : 'NO';
+      final leavesCount = d.detectedLeaves.length;
+      final pests = d.detectedLeaves
+          .map((l) => l.diagnosedPest?.displayName ?? 'Sana')
+          .toSet()
+          .join('|');
+      final avgConf = leavesCount == 0
+          ? 0.0
+          : d.detectedLeaves.map((l) => l.confidence ?? 1.0).reduce((a, b) => a + b) /
+              leavesCount;
+
+      buffer.writeln(
+        '${d.id},$dateStr,$lat,$lng,$offline,$leavesCount,$pests,${avgConf.toStringAsFixed(2)}',
+      );
+    }
+
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/AYNI_Diagnosticos_Detallado.csv');
+    await file.writeAsString(buffer.toString(), flush: true);
+    return file;
+  }
+
+  // ── PDF ─────────────────────────────────────────────────────────────────────
+
+  Future<File> _buildPdfFile({
+    required List<Diagnosis> history,
+    required double healthIndex,
+    required PestType? mainPest,
+    required String farmerName,
+  }) async {
+    final primaryColor = PdfColor.fromInt(0xFF04A033);
+    final lightGreen = PdfColor.fromInt(0xFFDDFFE7);
+    final gray = PdfColor.fromInt(0xFF4F4F4F);
+    final lightGray = PdfColor.fromInt(0xFFE0E0E0);
+    final now = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+
+    final doc = pw.Document(
+      title: 'Reporte Fitosanitario AYNI',
+      author: farmerName,
+      subject: 'Diagnóstico de plagas en hojas de café',
+    );
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.symmetric(horizontal: 40, vertical: 36),
+
+        header: (_) => pw.Column(children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'AYNI — AGRICULTURA INTELIGENTE',
+                    style: pw.TextStyle(
+                      color: primaryColor,
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                    'Reporte Fitosanitario de Finca',
+                    style: pw.TextStyle(
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              pw.Container(
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(
+                  color: lightGreen,
+                  borderRadius: pw.BorderRadius.circular(8),
+                ),
+                child: pw.Text(
+                  'SENASA Compatible',
+                  style: pw.TextStyle(
+                    color: primaryColor,
+                    fontSize: 9,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 6),
+          pw.Divider(color: PdfColors.black, thickness: 1.5),
+          pw.SizedBox(height: 4),
+        ]),
+
+        footer: (context) => pw.Column(children: [
+          pw.Divider(color: lightGray),
+          pw.SizedBox(height: 4),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Documento generado por AYNI App · Villa Rica, Pasco, Perú',
+                style: pw.TextStyle(color: gray, fontSize: 8),
+              ),
+              pw.Text(
+                'Pág. ${context.pageNumber} / ${context.pagesCount}',
+                style: pw.TextStyle(color: gray, fontSize: 8),
+              ),
+            ],
+          ),
+        ]),
+
+        build: (context) => [
+          // ── Metadata ─────────────────────────────────────────────────────────
+          _pdfMetaRow('Caficultor:', farmerName),
+          _pdfMetaRow('Fecha del reporte:', now),
+          _pdfMetaRow('Total diagnósticos:', '${history.length}'),
+          _pdfMetaRow('Índice de salud foliar:', '${healthIndex.toStringAsFixed(1)}% (Óptimo ≥ 85%)'),
+          _pdfMetaRow('Plaga predominante:', mainPest?.displayName ?? 'Ninguna (Cultivo sano)'),
+          pw.SizedBox(height: 20),
+
+          // ── Resumen cuantitativo ──────────────────────────────────────────────
+          pw.Text(
+            '1. Resumen Fitosanitario Cuantitativo',
+            style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: lightGray),
+              borderRadius: pw.BorderRadius.circular(6),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
+              children: [
+                _pdfStatItem('Salud foliar', '${healthIndex.toStringAsFixed(1)}%', primaryColor),
+                _pdfStatItem('Hojas afectadas', '${(100 - healthIndex).round()}%', PdfColor.fromInt(0xFFEB5757)),
+                _pdfStatItem('Diagnósticos', '${history.length}', gray),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 20),
+
+          // ── Tabla de diagnósticos ─────────────────────────────────────────────
+          pw.Text(
+            '2. Detalle de Análisis por Muestra',
+            style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headers: ['Fecha/Hora', 'Diagnóstico', 'Confianza', 'Modo'],
+            headerStyle: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              fontSize: 9,
+              color: PdfColors.white,
+            ),
+            headerDecoration: pw.BoxDecoration(color: primaryColor),
+            cellStyle: const pw.TextStyle(fontSize: 9),
+            cellAlignments: {
+              0: pw.Alignment.centerLeft,
+              1: pw.Alignment.centerLeft,
+              2: pw.Alignment.center,
+              3: pw.Alignment.center,
+            },
+            data: history.map((d) {
+              final dateStr = DateFormat('dd/MM HH:mm').format(d.dateTime);
+              final pests = d.detectedLeaves
+                  .map((l) => l.diagnosedPest?.displayName ?? 'Sana')
+                  .toSet()
+                  .join(', ');
+              final avgConf = d.detectedLeaves.isEmpty
+                  ? 0.0
+                  : d.detectedLeaves.map((l) => l.confidence ?? 1.0).reduce((a, b) => a + b) /
+                      d.detectedLeaves.length;
+              return [
+                dateStr,
+                pests,
+                '${(avgConf * 100).toStringAsFixed(0)}%',
+                d.isOffline ? 'Offline' : 'Online',
+              ];
+            }).toList(),
+          ),
+          pw.SizedBox(height: 20),
+
+          // ── Recomendaciones ───────────────────────────────────────────────────
+          pw.Text(
+            '3. Recomendaciones Técnicas de Control',
+            style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: lightGreen,
+              border: pw.Border.all(color: primaryColor),
+              borderRadius: pw.BorderRadius.circular(6),
+            ),
+            child: pw.Text(
+              mainPest != null && mainPest != PestType.healthy
+                  ? 'La plaga predominante es ${mainPest.displayName}.\n\n${mainPest.treatmentRecommendation}'
+                  : 'El cultivo se encuentra en estado saludable óptimo. Continuar con monitoreos preventivos semanales, control de sombra limpia y fertilización biológica habitual.',
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/AYNI_Reporte_Fitosanitario.pdf');
+    await file.writeAsBytes(await doc.save(), flush: true);
+    return file;
+  }
+
+  pw.Widget _pdfMetaRow(String label, String value) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 2),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+              width: 140,
+              child: pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromInt(0xFF4F4F4F),
+                ),
+              ),
+            ),
+            pw.Expanded(
+              child: pw.Text(value, style: const pw.TextStyle(fontSize: 11)),
+            ),
+          ],
+        ),
+      );
+
+  pw.Widget _pdfStatItem(String title, String value, PdfColor valueColor) =>
+      pw.Column(children: [
+        pw.Text(
+          title,
+          style: pw.TextStyle(
+            fontSize: 9,
+            color: PdfColor.fromInt(0xFF828282),
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+        pw.SizedBox(height: 3),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: 20,
+            fontWeight: pw.FontWeight.bold,
+            color: valueColor,
+          ),
+        ),
+      ]);
+
+  // ── Export orchestration ─────────────────────────────────────────────────────
+
+  Future<void> _export({
+    required String format,
+    required Future<File> Function() buildFile,
+    required String subject,
+    required String filename,
+  }) async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+
+    try {
+      final file = await buildFile();
+      if (!mounted) return;
+
+      await Share.shareXFiles(
+        [XFile(file.path, name: filename)],
+        subject: subject,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al generar el $format: $e'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(AppSpacing.s3),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final historyAsync = ref.watch(diagnosisHistoryProvider);
+    final farmerName =
+        ref.watch(currentProfileProvider)?.fullName ?? 'Caficultor AYNI';
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -43,10 +357,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       ),
       body: historyAsync.when(
         data: (history) {
-          if (history.isEmpty) {
-            return _buildEmptyState();
-          }
-          return _buildReportsDashboard(history);
+          if (history.isEmpty) return _buildEmptyState();
+          return _buildDashboard(history, farmerName);
         },
         loading: () => const Center(
           child: CircularProgressIndicator(
@@ -81,11 +393,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 color: AppColors.secondary,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.analytics_outlined,
-                size: 44,
-                color: AppColors.primary,
-              ),
+              child: const Icon(Icons.analytics_outlined, size: 44, color: AppColors.primary),
             ),
             const SizedBox(height: AppSpacing.s4),
             Text(
@@ -94,27 +402,24 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Necesitas realizar al menos un diagnóstico de hojas de café para poder generar y descargar reportes PDF o CSV.',
+              'Realiza al menos un diagnóstico de hojas de café para generar reportes PDF o CSV.',
               style: AppTextStyles.bodyRegular.copyWith(color: AppColors.gray2),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: AppSpacing.s4),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildReportsDashboard(List<Diagnosis> history) {
-    // Calculate statistics
-    final totalDiagnoses = history.length;
+  Widget _buildDashboard(List<Diagnosis> history, String farmerName) {
     int totalLeaves = 0;
     int healthyLeaves = 0;
     final Map<PestType, int> pestCounts = {};
 
-    for (var d in history) {
+    for (final d in history) {
       totalLeaves += d.detectedLeaves.length;
-      for (var leaf in d.detectedLeaves) {
+      for (final leaf in d.detectedLeaves) {
         final pest = leaf.diagnosedPest ?? PestType.healthy;
         if (pest == PestType.healthy) {
           healthyLeaves++;
@@ -126,12 +431,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
     final healthIndex = totalLeaves > 0 ? (healthyLeaves / totalLeaves) * 100 : 100.0;
 
-    PestType? mostFrequentPest;
-    int maxPestCount = 0;
+    PestType? mainPest;
+    int maxCount = 0;
     pestCounts.forEach((pest, count) {
-      if (count > maxPestCount) {
-        maxPestCount = count;
-        mostFrequentPest = pest;
+      if (count > maxCount) {
+        maxCount = count;
+        mainPest = pest;
       }
     });
 
@@ -139,9 +444,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       padding: const EdgeInsets.all(AppSpacing.s4),
       children: [
         _buildStatsCard(
-          totalDiagnoses: totalDiagnoses,
+          totalDiagnoses: history.length,
           healthIndex: healthIndex,
-          mostFrequentPest: mostFrequentPest,
+          mostFrequentPest: mainPest,
         ),
         const SizedBox(height: AppSpacing.s4),
         Text(
@@ -149,27 +454,63 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 16),
         ),
         const SizedBox(height: AppSpacing.s2),
-        _buildExportOptionCard(
+
+        // PDF card
+        _buildExportCard(
           title: 'Reporte Ejecutivo (PDF)',
-          description: 'Genera un documento formal con gráficos de salud foliar, severidad promedio y recomendaciones de tratamiento.',
+          description:
+              'Documento formal con tabla de diagnósticos, índice de salud foliar y recomendaciones de tratamiento.',
           icon: Icons.picture_as_pdf_rounded,
           iconColor: AppColors.error,
-          onPreview: () => _showPdfPreview(context, history, healthIndex, mostFrequentPest),
-          onDownload: () => _simulateExport('PDF', 'AYNI_Reporte_Fitosanitario.pdf'),
-          onShare: () => _showShareSheet(context, 'PDF', 'AYNI_Reporte_Fitosanitario.pdf'),
+          onPreview: () => _showPdfPreview(context, history, healthIndex, mainPest, farmerName),
+          onDownload: () => _export(
+            format: 'PDF',
+            buildFile: () => _buildPdfFile(
+              history: history,
+              healthIndex: healthIndex,
+              mainPest: mainPest,
+              farmerName: farmerName,
+            ),
+            subject: 'Reporte Fitosanitario AYNI',
+            filename: 'AYNI_Reporte_Fitosanitario.pdf',
+          ),
+          onShare: () => _export(
+            format: 'PDF',
+            buildFile: () => _buildPdfFile(
+              history: history,
+              healthIndex: healthIndex,
+              mainPest: mainPest,
+              farmerName: farmerName,
+            ),
+            subject: 'Te comparto mi reporte fitosanitario de AYNI 🌿',
+            filename: 'AYNI_Reporte_Fitosanitario.pdf',
+          ),
         ),
         const SizedBox(height: AppSpacing.s3),
-        _buildExportOptionCard(
+
+        // CSV card
+        _buildExportCard(
           title: 'Detalle de Datos (CSV)',
-          description: 'Exporta una hoja de cálculo estructurada con la fecha, coordenadas GPS, tipo de plaga detectada y confianza del modelo.',
+          description:
+              'Hoja de cálculo con fecha, coordenadas GPS, tipo de plaga detectada y confianza del modelo.',
           icon: Icons.grid_on_rounded,
           iconColor: AppColors.success,
           onPreview: () => _showCsvPreview(context, history),
-          onDownload: () => _simulateExport('CSV', 'AYNI_Diagnosticos_Detallado.csv'),
-          onShare: () => _showShareSheet(context, 'CSV', 'AYNI_Diagnosticos_Detallado.csv'),
+          onDownload: () => _export(
+            format: 'CSV',
+            buildFile: () => _buildCsvFile(history),
+            subject: 'Datos de diagnósticos AYNI',
+            filename: 'AYNI_Diagnosticos_Detallado.csv',
+          ),
+          onShare: () => _export(
+            format: 'CSV',
+            buildFile: () => _buildCsvFile(history),
+            subject: 'Te comparto mis datos de diagnósticos de AYNI 🌿',
+            filename: 'AYNI_Diagnosticos_Detallado.csv',
+          ),
         ),
         const SizedBox(height: AppSpacing.s4),
-        _buildDisclaimerSection(),
+        _buildDisclaimer(),
       ],
     );
   }
@@ -179,7 +520,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     required double healthIndex,
     required PestType? mostFrequentPest,
   }) {
-    final Color healthColor = healthIndex >= 85
+    final healthColor = healthIndex >= 85
         ? AppColors.success
         : (healthIndex >= 60 ? AppColors.warning : AppColors.error);
 
@@ -211,17 +552,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Salud Foliar',
-                      style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
-                    ),
+                    Text('Salud Foliar',
+                        style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2)),
                     const SizedBox(height: 4),
                     Text(
                       '${healthIndex.toStringAsFixed(1)}%',
                       style: AppTextStyles.heading5.copyWith(
-                        color: healthColor,
-                        fontWeight: FontWeight.w900,
-                      ),
+                          color: healthColor, fontWeight: FontWeight.w900),
                     ),
                   ],
                 ),
@@ -232,17 +569,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Diagnósticos',
-                      style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
-                    ),
+                    Text('Diagnósticos',
+                        style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2)),
                     const SizedBox(height: 4),
                     Text(
                       '$totalDiagnoses',
                       style: AppTextStyles.heading5.copyWith(
-                        color: AppColors.black2,
-                        fontWeight: FontWeight.w900,
-                      ),
+                          color: AppColors.black2, fontWeight: FontWeight.w900),
                     ),
                   ],
                 ),
@@ -253,10 +586,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Plaga Principal',
-                      style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
-                    ),
+                    Text('Plaga Principal',
+                        style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2)),
                     const SizedBox(height: 4),
                     Text(
                       mostFrequentPest?.displayName ?? 'Ninguna',
@@ -272,7 +603,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.s3),
-          // Progress bar of health index
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
@@ -287,7 +617,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  Widget _buildExportOptionCard({
+  Widget _buildExportCard({
     required String title,
     required String description,
     required IconData icon,
@@ -322,15 +652,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 16),
-                    ),
+                    Text(title,
+                        style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 16)),
                     const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2, height: 1.4),
-                    ),
+                    Text(description,
+                        style: AppTextStyles.smallTextRegular.copyWith(
+                            color: AppColors.gray2, height: 1.4)),
                   ],
                 ),
               ),
@@ -348,13 +675,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     side: const BorderSide(color: AppColors.gray4),
-                    minimumSize: const Size(0, 48), // Accessibiliy minimum tap height
+                    minimumSize: const Size(0, 48),
                   ),
                   icon: const Icon(Icons.visibility_outlined, size: 18, color: AppColors.gray1),
-                  label: Text(
-                    'Ver',
-                    style: AppTextStyles.smallTextBold.copyWith(color: AppColors.gray1),
-                  ),
+                  label: Text('Ver',
+                      style: AppTextStyles.smallTextBold.copyWith(color: AppColors.gray1)),
                 ),
               ),
               const SizedBox(width: 8),
@@ -365,11 +690,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     side: const BorderSide(color: AppColors.primary),
-                    minimumSize: const Size(0, 48), // Accessibiliy minimum tap height
+                    minimumSize: const Size(0, 48),
                   ),
-                  icon: const Icon(Icons.download_rounded, size: 18, color: AppColors.primary),
+                  icon: _isExporting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                          ),
+                        )
+                      : const Icon(Icons.download_rounded, size: 18, color: AppColors.primary),
                   label: Text(
-                    'Descargar',
+                    _isExporting ? 'Generando...' : 'Descargar',
                     style: AppTextStyles.smallTextBold.copyWith(color: AppColors.primary),
                   ),
                 ),
@@ -383,13 +717,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     side: const BorderSide(color: AppColors.primary),
                     backgroundColor: AppColors.primary,
-                    minimumSize: const Size(0, 48), // Accessibiliy minimum tap height
+                    minimumSize: const Size(0, 48),
                   ),
                   icon: const Icon(Icons.share_rounded, size: 18, color: AppColors.white),
-                  label: Text(
-                    'Compartir',
-                    style: AppTextStyles.smallTextBold.copyWith(color: AppColors.white),
-                  ),
+                  label: Text('Compartir',
+                      style: AppTextStyles.smallTextBold.copyWith(color: AppColors.white)),
                 ),
               ),
             ],
@@ -399,7 +731,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  Widget _buildDisclaimerSection() {
+  Widget _buildDisclaimer() {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.s3),
       decoration: BoxDecoration(
@@ -414,8 +746,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           const SizedBox(width: AppSpacing.s2),
           Expanded(
             child: Text(
-              'Nota: Los archivos generados se guardan localmente en la carpeta /Descargas de su dispositivo y pueden abrirse sin necesidad de conexión a internet.',
-              style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2, height: 1.4, fontSize: 12),
+              'Los archivos se generan en el dispositivo. Al tocar "Compartir" puedes enviarlos por WhatsApp, Gmail u otras apps instaladas.',
+              style: AppTextStyles.smallTextRegular.copyWith(
+                  color: AppColors.gray2, height: 1.4, fontSize: 12),
             ),
           ),
         ],
@@ -423,229 +756,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  // Simulated download progress execution
-  void _simulateExport(String format, String filename) {
-    setState(() {
-      _isExporting = true;
-      _exportProgress = 0.0;
-      _exportStep = 'Cargando registros...';
-    });
+  // ── Previews (read-only, sin cambios funcionales) ────────────────────────────
 
-    Timer? timer;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            // Setup a periodic timer to advance progress
-            if (timer == null) {
-              int ticks = 0;
-              timer = Timer.periodic(const Duration(milliseconds: 300), (t) {
-                ticks++;
-                if (ticks == 1) {
-                  setDialogState(() {
-                    _exportProgress = 0.3;
-                    _exportStep = 'Estructurando datos en formato $format...';
-                  });
-                } else if (ticks == 3) {
-                  setDialogState(() {
-                    _exportProgress = 0.75;
-                    _exportStep = 'Escribiendo archivo en almacenamiento...';
-                  });
-                } else if (ticks >= 5) {
-                  t.cancel();
-                  Navigator.of(context).pop(); // Close dialog
-                  _onExportSuccess(format, filename);
-                }
-              });
-            }
-
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              contentPadding: const EdgeInsets.all(AppSpacing.s4),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 8),
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                  ),
-                  const SizedBox(height: AppSpacing.s4),
-                  Text(
-                    'Generando Reporte',
-                    style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 16),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _exportStep,
-                    style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray2),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: AppSpacing.s3),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _exportProgress,
-                      backgroundColor: AppColors.gray5,
-                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
-                      minHeight: 6,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    ).then((_) {
-      setState(() {
-        _isExporting = false;
-      });
-    });
-  }
-
-  void _onExportSuccess(String format, String filename) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: AppColors.success,
-        margin: const EdgeInsets.all(AppSpacing.s3),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_rounded, color: AppColors.white),
-            const SizedBox(width: AppSpacing.s2),
-            Expanded(
-              child: Text(
-                '¡Reporte $format exportado con éxito!\nGuardado como: /Descargas/$filename',
-                style: AppTextStyles.smallTextBold.copyWith(color: AppColors.white, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
-
-  // Show customized share bottom sheet
-  void _showShareSheet(BuildContext context, String format, String filename) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (BuildContext sheetContext) {
-        final shareOptions = [
-          {'name': 'WhatsApp', 'icon': Icons.chat_outlined, 'color': const Color(0xFF25D366)},
-          {'name': 'Gmail', 'icon': Icons.mail_outline_rounded, 'color': const Color(0xFFEA4335)},
-          {'name': 'Bluetooth', 'icon': Icons.bluetooth_rounded, 'color': const Color(0xFF157DEC)},
-          {'name': 'Telegram', 'icon': Icons.send_rounded, 'color': const Color(0xFF0088CC)},
-          {'name': 'Guardar en Drive', 'icon': Icons.cloud_upload_outlined, 'color': const Color(0xFF34A853)},
-          {'name': 'Copiar enlace', 'icon': Icons.link_rounded, 'color': AppColors.gray2},
-        ];
-
-        return Container(
-          padding: const EdgeInsets.all(AppSpacing.s4),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.gray4,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.s3),
-                Text(
-                  'Compartir Reporte ($format)',
-                  style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 17),
-                ),
-                Text(
-                  filename,
-                  style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray3, fontSize: 12),
-                ),
-                const SizedBox(height: AppSpacing.s4),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: 0.95,
-                  ),
-                  itemCount: shareOptions.length,
-                  itemBuilder: (context, index) {
-                    final option = shareOptions[index];
-                    final name = option['name'] as String;
-                    final icon = option['icon'] as IconData;
-                    final color = option['color'] as Color;
-
-                    return InkWell(
-                      onTap: () {
-                        Navigator.of(sheetContext).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            behavior: SnackBarBehavior.floating,
-                            backgroundColor: AppColors.success,
-                            margin: const EdgeInsets.all(AppSpacing.s3),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            content: Text(
-                              'Reporte compartido con éxito vía $name',
-                              style: AppTextStyles.smallTextBold.copyWith(color: AppColors.white),
-                            ),
-                          ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(12),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(icon, color: color, size: 28),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            name,
-                            style: AppTextStyles.smallTextBold.copyWith(color: AppColors.black2, fontSize: 12),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: AppSpacing.s3),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // Interactive PDF layout preview
   void _showPdfPreview(
     BuildContext context,
     List<Diagnosis> history,
     double healthIndex,
     PestType? mostFrequentPest,
+    String farmerName,
   ) {
     showModalBottomSheet(
       context: context,
@@ -654,307 +772,193 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (BuildContext context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.85,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          expand: false,
-          builder: (context, scrollController) {
-            final formattedReportDate = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
-            final farmerName = 'Diego Rafael Cisneros / Francis Daniel Mamani';
-
-            return Column(
-              children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.gray4,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollController) {
+          final now = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+          return Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: AppColors.gray4, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Vista Previa PDF',
+                        style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 16)),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: AppColors.gray2),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Vista Previa de Impresión PDF',
-                        style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 16),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, color: AppColors.gray2),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(color: AppColors.gray5),
-                Expanded(
-                  child: Container(
-                    color: AppColors.gray5.withValues(alpha: 0.4),
-                    padding: const EdgeInsets.all(AppSpacing.s4),
-                    child: SingleChildScrollView(
-                      controller: scrollController,
-                      child: Container(
-                        padding: const EdgeInsets.all(AppSpacing.s4),
-                        decoration: BoxDecoration(
-                          color: AppColors.white,
-                          borderRadius: BorderRadius.circular(4),
-                          boxShadow: [
-                            BoxShadow(
+              ),
+              const Divider(color: AppColors.gray5),
+              Expanded(
+                child: Container(
+                  color: AppColors.gray5.withValues(alpha: 0.4),
+                  padding: const EdgeInsets.all(AppSpacing.s4),
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    child: Container(
+                      padding: const EdgeInsets.all(AppSpacing.s4),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
                               color: Colors.black.withValues(alpha: 0.1),
                               blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // PDF Header
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'AYNI - AGRICULTURA INTELIGENTE',
-                                        style: TextStyle(
-                                          fontFamily: 'Nunito',
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.primary,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Reporte Fitosanitario de Finca',
-                                        style: AppTextStyles.bodyBold.copyWith(fontSize: 16, color: AppColors.black1),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Icon(Icons.eco_rounded, color: AppColors.primary, size: 36),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            const Divider(color: AppColors.black2, thickness: 1.5),
-                            const SizedBox(height: 12),
-
-                            // Metadata table
-                            _buildPdfMetaRow('Caficultores:', farmerName),
-                            _buildPdfMetaRow('Fecha Reporte:', formattedReportDate),
-                            _buildPdfMetaRow('Total Muestras:', '$currencySymbol${history.length} diagnósticos'),
-                            _buildPdfMetaRow('Índice Salud Foliar:', '${healthIndex.toStringAsFixed(1)}% (Óptimo >= 85%)'),
-                            _buildPdfMetaRow('Plaga Predominante:', mostFrequentPest?.displayName ?? 'Ninguna (Sano)'),
-                            const SizedBox(height: 20),
-
-                            // Health indicator visual mock
-                            Text(
-                              '1. Resumen Fitosanitario Cuantitativo',
-                              style: AppTextStyles.bodyBold.copyWith(fontSize: 13, color: AppColors.black2),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: AppColors.gray5.withValues(alpha: 0.2),
-                                border: Border.all(color: AppColors.gray4),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                                children: [
-                                  _buildPdfStatItem('Índice de Salud', '${healthIndex.toStringAsFixed(1)}%'),
-                                  _buildPdfStatItem('Hojas Afectadas', '${100 - healthIndex.round()}%'),
-                                  _buildPdfStatItem('Diagnósticos', '${history.length}'),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-
-                            // Detail list
-                            Text(
-                              '2. Detalle de Análisis por Muestra',
-                              style: AppTextStyles.bodyBold.copyWith(fontSize: 13, color: AppColors.black2),
-                            ),
-                            const SizedBox(height: 8),
-                            Table(
-                              border: TableBorder.all(color: AppColors.gray4, width: 0.5),
-                              columnWidths: const {
-                                0: FlexColumnWidth(1.2),
-                                1: FlexColumnWidth(1.3),
-                                2: FlexColumnWidth(0.8),
-                                3: FlexColumnWidth(0.9),
-                              },
-                              children: [
-                                // Table Header
-                                TableRow(
-                                  decoration: BoxDecoration(color: AppColors.gray5.withValues(alpha: 0.4)),
+                              offset: const Offset(0, 2)),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    _buildPdfTableCell('Fecha/Hora', isHeader: true),
-                                    _buildPdfTableCell('Diagnóstico', isHeader: true),
-                                    _buildPdfTableCell('Confianza', isHeader: true),
-                                    _buildPdfTableCell('Modo', isHeader: true),
+                                    Text('AYNI — AGRICULTURA INTELIGENTE',
+                                        style: const TextStyle(
+                                            fontFamily: 'Nunito',
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppColors.primary)),
+                                    Text('Reporte Fitosanitario de Finca',
+                                        style: AppTextStyles.bodyBold
+                                            .copyWith(fontSize: 15, color: AppColors.black1)),
                                   ],
                                 ),
-                                // Table Rows
-                                ...history.map((d) {
-                                  final dateStr = DateFormat('dd/MM HH:mm').format(d.dateTime);
-                                  final pestList = d.detectedLeaves
-                                      .map((l) => l.diagnosedPest?.displayName ?? 'Sana')
-                                      .toSet()
-                                      .join(', ');
-                                  final avgConf = d.detectedLeaves.isNotEmpty
-                                      ? (d.detectedLeaves.map((l) => l.confidence ?? 1.0).reduce((a, b) => a + b) /
-                                          d.detectedLeaves.length)
-                                      : 0.0;
-
-                                  return TableRow(
-                                    children: [
-                                      _buildPdfTableCell(dateStr),
-                                      _buildPdfTableCell(pestList),
-                                      _buildPdfTableCell('${(avgConf * 100).toStringAsFixed(0)}%'),
-                                      _buildPdfTableCell(d.isOffline ? 'Offline' : 'Online'),
-                                    ],
-                                  );
-                                }),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-
-                            // Treatment Recommendations
-                            Text(
-                              '3. Recomendaciones Técnicas de Control',
-                              style: AppTextStyles.bodyBold.copyWith(fontSize: 13, color: AppColors.black2),
-                            ),
-                            const SizedBox(height: 8),
-                            _buildPdfRecommendationBlock(mostFrequentPest),
-
-                            const SizedBox(height: 40),
-                            Center(
-                              child: Text(
-                                'Documento oficial autogenerado por AYNI App. Villa Rica, Pasco, Perú.',
-                                style: AppTextStyles.smallTextRegular.copyWith(color: AppColors.gray3, fontSize: 10),
                               ),
+                              const Icon(Icons.eco_rounded, color: AppColors.primary, size: 32),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          const Divider(color: AppColors.black2, thickness: 1.5),
+                          const SizedBox(height: 10),
+                          _previewMetaRow('Caficultor:', farmerName),
+                          _previewMetaRow('Fecha Reporte:', now),
+                          _previewMetaRow('Total Muestras:', '${history.length} diagnósticos'),
+                          _previewMetaRow('Índice Salud Foliar:',
+                              '${healthIndex.toStringAsFixed(1)}% (Óptimo ≥ 85%)'),
+                          _previewMetaRow('Plaga Predominante:',
+                              mostFrequentPest?.displayName ?? 'Ninguna (Sano)'),
+                          const SizedBox(height: 16),
+                          Text('2. Detalle por Muestra',
+                              style: AppTextStyles.bodyBold.copyWith(fontSize: 12, color: AppColors.black2)),
+                          const SizedBox(height: 6),
+                          Table(
+                            border: TableBorder.all(color: AppColors.gray4, width: 0.5),
+                            columnWidths: const {
+                              0: FlexColumnWidth(1.2),
+                              1: FlexColumnWidth(1.3),
+                              2: FlexColumnWidth(0.7),
+                              3: FlexColumnWidth(0.8),
+                            },
+                            children: [
+                              TableRow(
+                                decoration:
+                                    BoxDecoration(color: AppColors.gray5.withValues(alpha: 0.4)),
+                                children: ['Fecha/Hora', 'Diagnóstico', 'Conf.', 'Modo']
+                                    .map((h) => Padding(
+                                          padding: const EdgeInsets.all(5),
+                                          child: Text(h,
+                                              style: const TextStyle(
+                                                  fontFamily: 'Nunito',
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w800)),
+                                        ))
+                                    .toList(),
+                              ),
+                              ...history.map((d) {
+                                final dateStr =
+                                    DateFormat('dd/MM HH:mm').format(d.dateTime);
+                                final pests = d.detectedLeaves
+                                    .map((l) => l.diagnosedPest?.displayName ?? 'Sana')
+                                    .toSet()
+                                    .join(', ');
+                                final avgConf = d.detectedLeaves.isEmpty
+                                    ? 0.0
+                                    : d.detectedLeaves
+                                            .map((l) => l.confidence ?? 1.0)
+                                            .reduce((a, b) => a + b) /
+                                        d.detectedLeaves.length;
+                                return TableRow(children: [
+                                  dateStr,
+                                  pests,
+                                  '${(avgConf * 100).toStringAsFixed(0)}%',
+                                  d.isOffline ? 'Offline' : 'Online',
+                                ]
+                                    .map((cell) => Padding(
+                                          padding: const EdgeInsets.all(5),
+                                          child: Text(cell,
+                                              style: const TextStyle(
+                                                  fontFamily: 'Nunito',
+                                                  fontSize: 9,
+                                                  color: AppColors.gray1)),
+                                        ))
+                                    .toList());
+                              }),
+                            ],
+                          ),
+                          const SizedBox(height: 32),
+                          Center(
+                            child: Text(
+                              'Documento generado por AYNI App · Villa Rica, Pasco, Perú.',
+                              style: AppTextStyles.smallTextRegular
+                                  .copyWith(color: AppColors.gray3, fontSize: 9),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildPdfMetaRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 130,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Nunito',
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: AppColors.gray2,
               ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _previewMetaRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 130,
+              child: Text(label,
+                  style: const TextStyle(
+                      fontFamily: 'Nunito',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gray2)),
             ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontFamily: 'Nunito',
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.black1,
-              ),
+            Expanded(
+              child: Text(value,
+                  style: const TextStyle(
+                      fontFamily: 'Nunito', fontSize: 11, color: AppColors.black1)),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPdfStatItem(String title, String val) {
-    return Column(
-      children: [
-        Text(
-          title,
-          style: TextStyle(fontFamily: 'Nunito', fontSize: 10, color: AppColors.gray2, fontWeight: FontWeight.w600),
+          ],
         ),
-        const SizedBox(height: 2),
-        Text(
-          val,
-          style: TextStyle(fontFamily: 'Nunito', fontSize: 16, color: AppColors.black2, fontWeight: FontWeight.w900),
-        ),
-      ],
-    );
-  }
+      );
 
-  Widget _buildPdfTableCell(String text, {bool isHeader = false}) {
-    return Padding(
-      padding: const EdgeInsets.all(6.0),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontFamily: 'Nunito',
-          fontSize: isHeader ? 10 : 9,
-          fontWeight: isHeader ? FontWeight.w800 : FontWeight.w500,
-          color: isHeader ? AppColors.black2 : AppColors.gray1,
-        ),
-        textAlign: isHeader ? TextAlign.center : TextAlign.left,
-      ),
-    );
-  }
-
-  Widget _buildPdfRecommendationBlock(PestType? mainPest) {
-    String recText = '';
-    if (mainPest == null || mainPest == PestType.healthy) {
-      recText = 'El cultivo se encuentra en un estado saludable óptimo. Continuar con monitoreos preventivos semanales, control de sombra limpia y fertilización biológica habitual.';
-    } else {
-      recText = 'La plaga predominante en el lote es ${mainPest.displayName}.\n\n'
-          'Acciones inmediatas:\n'
-          '${mainPest.treatmentRecommendation}';
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppColors.secondary.withValues(alpha: 0.15),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        recText,
-        style: TextStyle(
-          fontFamily: 'Nunito',
-          fontSize: 10,
-          color: AppColors.gray1,
-          height: 1.4,
-        ),
-      ),
-    );
-  }
-
-  // Interactive CSV layout preview
   void _showCsvPreview(BuildContext context, List<Diagnosis> history) {
     showModalBottomSheet(
       context: context,
@@ -963,122 +967,108 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (BuildContext context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.85,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          expand: false,
-          builder: (context, scrollController) {
-            return Column(
-              children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.gray4,
-                    borderRadius: BorderRadius.circular(2),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollController) => Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: AppColors.gray4, borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Vista Previa CSV',
+                      style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 16)),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: AppColors.gray2),
+                    onPressed: () => Navigator.of(ctx).pop(),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Vista Previa de Datos CSV',
-                        style: AppTextStyles.bodyBold.copyWith(color: AppColors.black2, fontSize: 16),
+                ],
+              ),
+            ),
+            const Divider(color: AppColors.gray5),
+            Expanded(
+              child: Container(
+                color: AppColors.gray5.withValues(alpha: 0.4),
+                padding: const EdgeInsets.all(AppSpacing.s4),
+                child: ListView(
+                  controller: scrollController,
+                  children: [
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      color: AppColors.black3,
+                      child: const Text(
+                        'AYNI_Diagnosticos_Detallado.csv',
+                        style: TextStyle(fontFamily: 'Courier', color: AppColors.white, fontSize: 13),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, color: AppColors.gray2),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(color: AppColors.gray5),
-                Expanded(
-                  child: Container(
-                    color: AppColors.gray5.withValues(alpha: 0.4),
-                    padding: const EdgeInsets.all(AppSpacing.s4),
-                    child: ListView(
-                      controller: scrollController,
-                      children: [
-                        // CSV File Mock Header representation
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          color: AppColors.black3,
-                          child: Text(
-                            'AYNI_Diagnosticos_Detallado.csv',
-                            style: TextStyle(fontFamily: 'Courier', color: AppColors.white, fontSize: 13),
-                          ),
-                        ),
-                        Container(
-                          color: AppColors.white,
-                          padding: const EdgeInsets.all(12),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // CSV Raw Headers
-                                Text(
-                                  'id_diag,fecha,latitud,longitud,offline,cantidad_hojas,plagas_detectadas,confianza_promedio',
-                                  style: TextStyle(
-                                    fontFamily: 'Courier',
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.black2,
-                                  ),
-                                ),
-                                const Divider(color: AppColors.gray4, height: 12),
-                                // CSV Rows
-                                ...history.map((d) {
-                                  final dateStr = DateFormat('yyyy-MM-dd HH:mm:ss').format(d.dateTime);
-                                  final latStr = d.latitude?.toStringAsFixed(5) ?? '';
-                                  final lngStr = d.longitude?.toStringAsFixed(5) ?? '';
-                                  final offlineStr = d.isOffline ? 'SI' : 'NO';
-                                  final leavesCount = d.detectedLeaves.length;
-                                  final pestList = d.detectedLeaves
-                                      .map((l) => l.diagnosedPest?.displayName ?? 'Sana')
-                                      .toSet()
-                                      .join('|');
-                                  final avgConf = d.detectedLeaves.isNotEmpty
-                                      ? (d.detectedLeaves.map((l) => l.confidence ?? 1.0).reduce((a, b) => a + b) /
-                                          d.detectedLeaves.length)
-                                      : 0.0;
-                                  final avgConfStr = avgConf.toStringAsFixed(2);
-
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 3.0),
-                                    child: Text(
-                                      '${d.id},$dateStr,$latStr,$lngStr,$offlineStr,$leavesCount,$pestList,$avgConfStr',
-                                      style: TextStyle(
-                                        fontFamily: 'Courier',
-                                        fontSize: 11,
-                                        color: AppColors.gray1,
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
-                  ),
+                    Container(
+                      color: AppColors.white,
+                      padding: const EdgeInsets.all(12),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'id_diag,fecha,latitud,longitud,offline,cantidad_hojas,plagas_detectadas,confianza_promedio',
+                              style: TextStyle(
+                                  fontFamily: 'Courier',
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.black2),
+                            ),
+                            const Divider(color: AppColors.gray4, height: 12),
+                            ...history.map((d) {
+                              final dateStr =
+                                  DateFormat('yyyy-MM-dd HH:mm:ss').format(d.dateTime);
+                              final lat = d.latitude?.toStringAsFixed(5) ?? '';
+                              final lng = d.longitude?.toStringAsFixed(5) ?? '';
+                              final offline = d.isOffline ? 'SI' : 'NO';
+                              final leavesCount = d.detectedLeaves.length;
+                              final pests = d.detectedLeaves
+                                  .map((l) => l.diagnosedPest?.displayName ?? 'Sana')
+                                  .toSet()
+                                  .join('|');
+                              final avgConf = leavesCount == 0
+                                  ? 0.0
+                                  : d.detectedLeaves
+                                          .map((l) => l.confidence ?? 1.0)
+                                          .reduce((a, b) => a + b) /
+                                      leavesCount;
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 3),
+                                child: Text(
+                                  '${d.id},$dateStr,$lat,$lng,$offline,$leavesCount,$pests,${avgConf.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                      fontFamily: 'Courier',
+                                      fontSize: 10,
+                                      color: AppColors.gray1),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            );
-          },
-        );
-      },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
-
-  // Simple placeholder for formatting
-  static const String currencySymbol = '';
 }

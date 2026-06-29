@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../domain/entities/diagnosis.dart';
@@ -15,11 +17,18 @@ class DiagnosisRepositoryImpl implements DiagnosisRepository {
   final DiagnosisRemoteDataSource remoteDataSource;
   final ConnectivityService connectivityService;
 
-  const DiagnosisRepositoryImpl({
+  String? _latestDetectionImageUrl;
+  int? _imageWidth;
+  int? _imageHeight;
+
+  DiagnosisRepositoryImpl({
     required this.localDataSource,
     required this.remoteDataSource,
     required this.connectivityService,
   });
+
+  @override
+  String? get latestDetectionImageUrl => _latestDetectionImageUrl;
 
   // ─── Online diagnosis path ───────────────────────────────────────────────
 
@@ -58,32 +67,22 @@ class DiagnosisRepositoryImpl implements DiagnosisRepository {
     try {
       final isOnline = await connectivityService.isConnected();
       if (!isOffline && isOnline) {
-        // Paso 1: intentar API Gateway — detección + clasificación completa en un paso
-        final onlineResult = await remoteDataSource.analyzeImageOnline(
+        final onlineResult = await remoteDataSource.detectLeavesOnline(
           imagePath: originalImagePath,
         );
-        // El API devuelve un resultado agregado (una plaga por imagen completa).
-        // Creamos un LeafDetection que cubre la imagen entera para mantener
-        // compatibilidad con el resto del flujo (mostrar bounding box en pantalla).
-        final pest = _apiStringToPestType(onlineResult.detectedPest);
-        final leaf = LeafDetection(
-          id: 'api_leaf_${DateTime.now().microsecondsSinceEpoch}',
-          boxX: 0.0,
-          boxY: 0.0,
-          boxWidth: 1.0,
-          boxHeight: 1.0,
-          croppedImagePath: originalImagePath, // imagen original completa
-          diagnosedPest: pest,
-          confidence: onlineResult.confidenceScore,
-          severity: onlineResult.severityLevel,
-        );
-        return Right([leaf]);
+        _latestDetectionImageUrl = onlineResult.imageUrl;
+        _imageWidth = onlineResult.imageWidth;
+        _imageHeight = onlineResult.imageHeight;
+        final leaves = onlineResult.leaves
+            .map((box) => LeafDetectionModel.fromApiBox(box))
+            .toList();
+        return Right(leaves);
       }
       // Offline o fallback: YOLO TFLite local
       final localResult = await localDataSource.detectLeaves(originalImagePath);
       return Right(localResult);
     } catch (e) {
-      //Fallback: si el API falla (no disponible, timeout, etc.), intentar TFLite local
+      // Fallback: si el API falla, intentar TFLite local
       try {
         final localResult = await localDataSource.detectLeaves(originalImagePath);
         return Right(localResult);
@@ -106,24 +105,76 @@ class DiagnosisRepositoryImpl implements DiagnosisRepository {
           .toList();
 
       if (!isOffline && isOnline) {
-        // Online: la clasificación la hizo el servidor en analyzeOnline().
-        // detectedLeaves ya viene con diagnosedPest, confidence y severity
-        // asignados desde el resultado del API en detectLeaves().
-        // No volver a clasificar — solo verificar que todos los leaves tengan plaga asignada.
-        final unclassified = detectedLeaves.where((l) => l.diagnosedPest == null).toList();
-        if (unclassified.isNotEmpty) {
-          return Left(ProcessingFailure(
-              'Algunas hojas no pudieron ser clasificadas por el servidor.'));
+        LeavesClassifyResponse classifyResponse;
+        if (_latestDetectionImageUrl != null && _imageWidth != null && _imageHeight != null) {
+          // Forma A: URL + bboxes
+          final apiLeaves = detectedLeaves.map((l) => LeafBoxModel(
+            id: l.id,
+            boxX: l.boxX,
+            boxY: l.boxY,
+            boxWidth: l.boxWidth,
+            boxHeight: l.boxHeight,
+          )).toList();
+
+          classifyResponse = await remoteDataSource.classifyPestsOnline(
+            imageUrl: _latestDetectionImageUrl!,
+            leaves: apiLeaves,
+            imageWidth: _imageWidth!,
+            imageHeight: _imageHeight!,
+          );
+        } else {
+          // Forma B: base64 crops
+          final crops = <Map<String, String>>[];
+          for (final leaf in detectedLeaves) {
+            final file = File(leaf.croppedImagePath);
+            if (await file.exists()) {
+              final bytes = await file.readAsBytes();
+              final base64Image = base64Encode(bytes);
+              crops.add({
+                'id': leaf.id,
+                'imageBase64': base64Image,
+              });
+            }
+          }
+          if (crops.isEmpty) {
+            return const Left(ProcessingFailure('No hay imágenes recortadas disponibles localmente para clasificar en el servidor.'));
+          }
+          classifyResponse = await remoteDataSource.classifyPestsByCropsOnline(crops: crops);
         }
-        return Right(detectedLeaves);
+
+        final classifiedLeaves = detectedLeaves.map((leaf) {
+          final match = classifyResponse.leaves.firstWhere(
+            (c) => c.id == leaf.id,
+            orElse: () => const LeafClassificationModel(
+              id: '',
+              diagnosedPest: 'HEALTHY',
+              confidence: 0.0,
+            ),
+          );
+          return leaf.copyWith(
+            diagnosedPest: _apiStringToPestType(match.diagnosedPest),
+            confidence: match.confidence,
+            severity: match.severity,
+          );
+        }).toList();
+
+        return Right(classifiedLeaves);
       }
 
       // Offline: EfficientNet TFLite local
       final localResult = await localDataSource.classifyPests(leafModels);
       return Right(localResult);
     } catch (e) {
-      return Left(ProcessingFailure(
-          'Error al clasificar plagas: ${e.toString()}'));
+      // Fallback a clasificación local si falla el online
+      try {
+        final localResult = await localDataSource.classifyPests(
+          detectedLeaves.map((e) => LeafDetectionModel.fromEntity(e)).toList()
+        );
+        return Right(localResult);
+      } catch (localError) {
+        return Left(ProcessingFailure(
+            'Error al clasificar plagas en el servidor y el clasificador local también falló: ${e.toString()}'));
+      }
     }
   }
 

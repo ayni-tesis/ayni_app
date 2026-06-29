@@ -19,6 +19,26 @@ abstract class DiagnosisRemoteDataSource {
     double? longitude,
   });
 
+  /// POST /diagnoses/leaves/detect
+  Future<LeavesDetectionResponse> detectLeavesOnline({
+    required String imagePath,
+    double? latitude,
+    double? longitude,
+  });
+
+  /// POST /diagnoses/leaves/classify (forma A)
+  Future<LeavesClassifyResponse> classifyPestsOnline({
+    required String imageUrl,
+    required List<LeafBoxModel> leaves,
+    required int imageWidth,
+    required int imageHeight,
+  });
+
+  /// POST /diagnoses/leaves/classify (forma B)
+  Future<LeavesClassifyResponse> classifyPestsByCropsOnline({
+    required List<Map<String, String>> crops,
+  });
+
   /// POST /diagnoses/sync
   ///
   /// Envía un diagnóstico capturado offline para persistencia en el servidor.
@@ -79,26 +99,66 @@ class DiagnosisRemoteDataSourceImpl implements DiagnosisRemoteDataSource {
       throw Exception(e.message);
     }
   }
-}
 
-// ─── Legacy stubs — ya no se usan; se mantienen para no romper compile
-// en código que aún referencia detectLeavesOnline / classifyPestsOnline
-// que fueron removidos del contrato. Se eliminan en el siguiente diff.
+  @override
+  Future<LeavesDetectionResponse> detectLeavesOnline({
+    required String imagePath,
+    double? latitude,
+    double? longitude,
+  }) async {
+    try {
+      final response = await _api.uploadFile<Map<String, dynamic>>(
+        '/diagnoses/leaves/detect',
+        filePath: imagePath,
+        fieldName: 'image',
+        fields: {
+          if (latitude != null) 'latitude': latitude.toString(),
+          if (longitude != null) 'longitude': longitude.toString(),
+        },
+      );
+      return LeavesDetectionResponse.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
 
-/// @deprecated Use [analyzeImageOnline] en su lugar.
-/// Este método existía para separar detección YOLO de clasificación.
-/// Ahora el servidor hace ambas en un solo paso.
-Future<List<LeafDetectionModel>> detectLeavesOnlineStub(
-    String originalImagePath) async {
-  await Future.delayed(const Duration(milliseconds: 1500));
-  throw UnimplementedError(
-      'detectLeavesOnline fue reemplazado por analyzeImageOnline.');
-}
+  @override
+  Future<LeavesClassifyResponse> classifyPestsOnline({
+    required String imageUrl,
+    required List<LeafBoxModel> leaves,
+    required int imageWidth,
+    required int imageHeight,
+  }) async {
+    try {
+      final response = await _api.post<Map<String, dynamic>>(
+        '/diagnoses/leaves/classify',
+        data: {
+          'imageUrl': imageUrl,
+          'imageWidth': imageWidth,
+          'imageHeight': imageHeight,
+          'leaves': leaves.map((l) => l.toJson()).toList(),
+        },
+      );
+      return LeavesClassifyResponse.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
 
-/// @deprecated La clasificación ahora ocurre en el servidor vía [analyzeImageOnline].
-Future<List<LeafDetectionModel>> classifyPestsOnlineStub(
-    List<LeafDetectionModel> leaves) async {
-  await Future.delayed(const Duration(milliseconds: 1500));
-  throw UnimplementedError(
-      'classifyPestsOnline fue reemplazado por analyzeImageOnline.');
+  @override
+  Future<LeavesClassifyResponse> classifyPestsByCropsOnline({
+    required List<Map<String, String>> crops,
+  }) async {
+    try {
+      final response = await _api.post<Map<String, dynamic>>(
+        '/diagnoses/leaves/classify',
+        data: {
+          'crops': crops,
+        },
+      );
+      return LeavesClassifyResponse.fromJson(response.data!);
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
 }

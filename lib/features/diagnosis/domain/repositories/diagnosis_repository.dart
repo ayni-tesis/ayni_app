@@ -3,6 +3,9 @@ import '../entities/diagnosis.dart';
 import '../entities/leaf_detection.dart';
 
 abstract class DiagnosisRepository {
+  /// Obtiene la URL de la última imagen subida y detectada online.
+  String? get latestDetectionImageUrl;
+
   /// Stage 1: Detects coffee leaves in the original image and returns the list of detected leaves (with cropped image paths).
   Future<Either<Failure, List<LeafDetection>>> detectLeaves(
     String originalImagePath, {

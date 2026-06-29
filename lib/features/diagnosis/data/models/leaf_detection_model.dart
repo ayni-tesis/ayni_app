@@ -1,5 +1,6 @@
 import '../../domain/entities/leaf_detection.dart';
 import '../../domain/entities/pest_type.dart';
+import 'diagnosis_api_models.dart';
 
 class LeafDetectionModel extends LeafDetection {
   const LeafDetectionModel({
@@ -13,6 +14,20 @@ class LeafDetectionModel extends LeafDetection {
     super.confidence,
     super.severity,
   });
+
+  factory LeafDetectionModel.fromApiBox(LeafBoxModel box) {
+    return LeafDetectionModel(
+      id: box.id,
+      boxX: box.boxX,
+      boxY: box.boxY,
+      boxWidth: box.boxWidth,
+      boxHeight: box.boxHeight,
+      croppedImagePath: '',
+      diagnosedPest: null,
+      confidence: box.detectionConfidence,
+      severity: null,
+    );
+  }
 
   factory LeafDetectionModel.fromEntity(LeafDetection entity) {
     return LeafDetectionModel(
