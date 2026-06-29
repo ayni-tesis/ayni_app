@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import '../../../../core/utils/image_processing_utils.dart';
 import '../../../../core/errors/failures.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../domain/entities/diagnosis.dart';
@@ -73,9 +74,34 @@ class DiagnosisRepositoryImpl implements DiagnosisRepository {
         _latestDetectionImageUrl = onlineResult.imageUrl;
         _imageWidth = onlineResult.imageWidth;
         _imageHeight = onlineResult.imageHeight;
-        final leaves = onlineResult.leaves
-            .map((box) => LeafDetectionModel.fromApiBox(box))
-            .toList();
+
+        // Recortamos las hojas en local para visualización y/o clasificación Base64
+        final rects = onlineResult.leaves.map((box) => CropRect(
+          x: box.boxX,
+          y: box.boxY,
+          width: box.boxWidth,
+          height: box.boxHeight,
+        )).toList();
+        
+        final croppedPaths = await ImageProcessingUtils.cropLeaves(originalImagePath, rects);
+
+        final leaves = <LeafDetectionModel>[];
+        for (int i = 0; i < onlineResult.leaves.length; i++) {
+          final box = onlineResult.leaves[i];
+          final croppedPath = i < croppedPaths.length ? croppedPaths[i] : '';
+          leaves.add(LeafDetectionModel(
+            id: box.id,
+            boxX: box.boxX,
+            boxY: box.boxY,
+            boxWidth: box.boxWidth,
+            boxHeight: box.boxHeight,
+            croppedImagePath: croppedPath,
+            diagnosedPest: null,
+            confidence: box.detectionConfidence,
+            severity: null,
+          ));
+        }
+
         return Right(leaves);
       }
       // Offline o fallback: YOLO TFLite local
