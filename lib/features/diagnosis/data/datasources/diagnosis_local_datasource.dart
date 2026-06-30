@@ -63,7 +63,7 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
       originalImage,
       width: 640,
       height: 640,
-      interpolation: img_lib.Interpolation.nearest,
+      interpolation: img_lib.Interpolation.linear,
     );
 
     // Run YOLOv8 inference: output shape [1, 5, 8400]
@@ -74,9 +74,42 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
     // YOLOv8 postprocessing: [1, 5, 8400] → row-major [5, 8400]
     // Row 0: cx, Row 1: cy, Row 2: w, Row 3: h, Row 4: objectness score
     final candidates = <_YoloCandidate>[];
-    // Minimum confidence to consider a detection valid.
-    // At 0.65 the model must be fairly certain before accepting a region as leaf.
-    const confThresh = 0.65;
+    // TODO(model-tuning): recalibrate against current leaf_detection.tflite.
+    // Initial calibration: 0.30 worked on a well-lit leaf shot (max 0.48).
+    // Harder shots (shadows, distance) peak around 0.15–0.20. Sample more
+    // images to settle on a robust threshold.
+    const confThresh = 0.20;
+
+    // Debug: print top-5 raw confidences so we can recalibrate later.
+    final topRaw = <double>[];
+    int bestCol = -1;
+    double bestConf = 0.0;
+    for (int col = 0; col < 8400; col++) {
+      final c = outputBuffer[4 * 8400 + col];
+      topRaw.add(c);
+      if (c > bestConf) {
+        bestConf = c;
+        bestCol = col;
+      }
+    }
+    topRaw.sort((a, b) => b.compareTo(a));
+    // ignore: avoid_print
+    print('[LeafDetector] top5 raw confidences: '
+        '${topRaw.take(5).map((c) => c.toStringAsFixed(3)).toList()} '
+        '(threshold=$confThresh)');
+
+    // Debug: print the BEST candidate's raw coords (passes conf filter
+    // but maybe fails size/NMS). Helps us tell whether the model is
+    // detecting things we throw away, vs not detecting at all.
+    if (bestCol >= 0 && bestConf >= confThresh) {
+      // ignore: avoid_print
+      print('[LeafDetector] best raw col=$bestCol: '
+          'cx=${outputBuffer[0 * 8400 + bestCol].toStringAsFixed(1)}, '
+          'cy=${outputBuffer[1 * 8400 + bestCol].toStringAsFixed(1)}, '
+          'w=${outputBuffer[2 * 8400 + bestCol].toStringAsFixed(1)}, '
+          'h=${outputBuffer[3 * 8400 + bestCol].toStringAsFixed(1)}, '
+          'conf=${bestConf.toStringAsFixed(3)}');
+    }
 
     for (int col = 0; col < 8400; col++) {
       final confidence = outputBuffer[4 * 8400 + col];
@@ -89,6 +122,21 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
         // Filter out detections that are too small (likely noise).
         // A valid leaf should occupy at least 4% of the 640x640 input.
         if (w * 640 * h * 640 < 0.04 * 640 * 640) continue;
+
+        // Reject typical YOLOv8 "no leaf found" fallbacks: these are
+        // wide-then-short boxes glued to the bottom/edge of the image.
+        // A real coffee leaf detection should have an aspect ratio
+        // (w / h) closer to ~1 and not touch cy ≥ 0.85.
+        if (h > 0 && w / h > 2.0) continue;
+        if (cy > 0.85) continue;
+
+        // Debug: log raw YOLO coords for the first 3 surviving candidates
+        // so we can confirm they're in pixel space (0–640) vs normalized.
+        if (candidates.length < 3) {
+          // ignore: avoid_print
+          print('[LeafDetector] raw col=$col: '
+              'cx=$cx, cy=$cy, w=$w, h=$h, conf=${confidence.toStringAsFixed(3)}');
+        }
 
         candidates.add(_YoloCandidate(
           cx: cx, cy: cy, w: w, h: h, confidence: confidence,
@@ -328,8 +376,10 @@ class _YoloCandidate {
     required this.confidence,
   });
 
-  /// Converts normalized [0,1] YOLOv8 coords to fractional CropRect (0-1).
-  /// cropLeaves() will multiply by the image dimensions internally.
+  /// Converts YOLOv8 TFLite coords — already normalized to [0,1] in the
+  /// 640x640 input space — into a fractional CropRect. All downstream
+  /// consumers (`cropLeaves`, `LeafDetection.{boxX,boxY,boxWidth,boxHeight}`,
+  /// `BoundingBoxOverlay`) expect fractional coords.
   CropRect toCropRect() {
     final x1 = (cx - w / 2).clamp(0.0, 1.0);
     final y1 = (cy - h / 2).clamp(0.0, 1.0);

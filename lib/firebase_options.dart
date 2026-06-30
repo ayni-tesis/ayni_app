@@ -58,12 +58,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBIbShDnLBjPU9uZw-9Vi0HBiEf5WYMc4w',
-    appId: '1:180166017331:android:27bcb949215aaf60bf7e46',
+    appId: '1:180166017331:android:d61b62c1724c1fdebf7e46',
     messagingSenderId: '180166017331',
     projectId: 'ayni-tesis',
     storageBucket: 'ayni-tesis.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyByCcD_18PC-oAZrtkfBckjfSd_CYy0AYs',
     appId: '1:180166017331:ios:300bfe51bd1315e0bf7e46',

@@ -1,4 +1,4 @@
-package com.example.ayni_app
+package pe.ayni.app
 
 import io.flutter.embedding.android.FlutterActivity
 
