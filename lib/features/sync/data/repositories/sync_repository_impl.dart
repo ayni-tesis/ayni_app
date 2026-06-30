@@ -1,25 +1,24 @@
+import 'dart:convert';
+import 'dart:io';
 import '../../../diagnosis/domain/entities/diagnosis.dart';
-import '../../../diagnosis/domain/repositories/diagnosis_repository.dart';
+import '../../../diagnosis/domain/entities/pest_type.dart';
+import '../../../diagnosis/data/models/diagnosis_api_models.dart';
 import '../../domain/repositories/sync_repository.dart';
 import '../datasources/sync_local_datasource.dart';
+import '../datasources/sync_remote_datasource.dart';
 
 class SyncRepositoryImpl implements SyncRepository {
-  final DiagnosisRepository diagnosisRepository;
   final SyncLocalDataSource localDataSource;
+  final SyncRemoteDataSource remoteDataSource;
 
   SyncRepositoryImpl({
-    required this.diagnosisRepository,
     required this.localDataSource,
+    required this.remoteDataSource,
   });
 
   @override
-  Future<List<Diagnosis>> getPendingDiagnoses() async {
-    final result = await diagnosisRepository.getDiagnosisHistory();
-    return result.fold(
-      (_) => <Diagnosis>[],
-      (diagnoses) => diagnoses.where((d) => !d.isSynced).toList(),
-    );
-  }
+  Future<List<Diagnosis>> getPendingDiagnoses() =>
+      localDataSource.getPendingDiagnoses();
 
   @override
   Future<int> getPendingCount() => localDataSource.getPendingCount();
@@ -38,4 +37,88 @@ class SyncRepositoryImpl implements SyncRepository {
   @override
   Future<void> setLastSyncTime(DateTime time) =>
       localDataSource.setLastSyncTime(time);
+
+  @override
+  Future<void> savePendingDiagnosis(Diagnosis diagnosis) =>
+      localDataSource.savePendingDiagnosis(diagnosis);
+
+  @override
+  Future<SyncBatchResponse> syncBatch(List<Diagnosis> diagnoses) async {
+    final items = <SyncItemRequest>[];
+
+    for (final diagnosis in diagnoses) {
+      // Determinar la plaga dominante: la de mayor severity entre las infectadas.
+      final infectedLeaves = diagnosis.detectedLeaves
+          .where((l) => l.diagnosedPest != null && l.diagnosedPest != PestType.healthy)
+          .toList();
+
+      String dominantPest;
+      double? dominantSeverity;
+      double? avgConfidence;
+
+      if (infectedLeaves.isNotEmpty) {
+        // Pest con mayor severity
+        final worst = infectedLeaves.reduce(
+            (a, b) => (a.severity ?? 0) >= (b.severity ?? 0) ? a : b);
+        dominantPest = _pestTypeToApiString(worst.diagnosedPest);
+        dominantSeverity = worst.severity;
+        avgConfidence = infectedLeaves
+                .map((l) => l.confidence ?? 0.0)
+                .reduce((a, b) => a + b) /
+            infectedLeaves.length;
+      } else {
+        dominantPest = 'HEALTHY';
+        dominantSeverity = null;
+        avgConfidence = diagnosis.detectedLeaves.isNotEmpty
+            ? diagnosis.detectedLeaves
+                    .map((l) => l.confidence ?? 0.0)
+                    .reduce((a, b) => a + b) /
+                diagnosis.detectedLeaves.length
+            : null;
+      }
+
+      // Leer imagen original en base64
+      String? imageBase64;
+      if (diagnosis.originalImagePath.isNotEmpty) {
+        final file = File(diagnosis.originalImagePath);
+        if (await file.exists()) {
+          final bytes = await file.readAsBytes();
+          imageBase64 = base64Encode(bytes);
+        }
+      }
+
+      items.add(SyncItemRequest(
+        localDiagnosisId: diagnosis.id,
+        pestType: dominantPest,
+        confidence: avgConfidence,
+        severity: dominantSeverity,
+        latitude: diagnosis.latitude?.toString(),
+        longitude: diagnosis.longitude?.toString(),
+        capturedAt: diagnosis.dateTime,
+        imageBase64: imageBase64,
+      ));
+    }
+
+    final request = SyncBatchRequest(items: items);
+    return remoteDataSource.syncBatch(request);
+  }
+
+  String _pestTypeToApiString(dynamic pestType) {
+    if (pestType == null) return 'HEALTHY';
+    final name = pestType.toString().split('.').last.toUpperCase();
+    switch (name) {
+      case 'ROYA':
+        return 'RUST';
+      case 'MINADOR':
+        return 'MINER';
+      case 'PHOMA':
+        return 'PHOMA';
+      case 'HEALTHY':
+        return 'HEALTHY';
+      case 'REDSPIDER':
+        return 'RED_SPIDER';
+      default:
+        return name;
+    }
+  }
 }

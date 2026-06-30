@@ -1,66 +1,58 @@
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../../diagnosis/data/models/diagnosis_model.dart';
+import '../../../diagnosis/domain/entities/diagnosis.dart';
+import 'sync_database.dart';
 
+/// Contrato para el acceso local a la cola de sincronización.
+///
+/// Historicamente SharedPreferences + JSON; migrado a sqflite
+/// para escalar con múltiples diagnósticos offline.
 abstract class SyncLocalDataSource {
   Future<int> getPendingCount();
   Future<DateTime?> getLastSyncTime();
   Future<void> setLastSyncTime(DateTime time);
   Future<void> markSynced(List<String> ids);
+  Future<List<Diagnosis>> getPendingDiagnoses();
+  Future<void> savePendingDiagnosis(Diagnosis diagnosis);
 }
 
+/// Implementación con sqflite. La cola de sincronización vive en la tabla
+/// `sync_queue`; la metadata (última sync) en `sync_metadata`.
 class SyncLocalDataSourceImpl implements SyncLocalDataSource {
-  final SharedPreferences sharedPreferences;
-  static const _pendingKey = 'diagnosis_history_key'; // reads from diagnosis history
-  static const _lastSyncKey = 'last_sync_timestamp';
+  final SyncDatabase _db;
 
-  SyncLocalDataSourceImpl({required this.sharedPreferences});
+  SyncLocalDataSourceImpl({required this._db});
 
   @override
-  Future<int> getPendingCount() async {
-    final jsonString = sharedPreferences.getString(_pendingKey);
-    if (jsonString == null) return 0;
-
-    try {
-      final jsonList = jsonDecode(jsonString) as List<dynamic>;
-      // Count diagnoses where isSynced == false
-      return jsonList
-          .where((j) => (j as Map<String, dynamic>)['isSynced'] == false)
-          .length;
-    } catch (_) {
-      return 0;
-    }
-  }
+  Future<int> getPendingCount() => _db.getPendingCount();
 
   @override
   Future<DateTime?> getLastSyncTime() async {
-    final millis = sharedPreferences.getInt(_lastSyncKey);
+    final millis = await _db.getMetadata('last_sync_timestamp');
     if (millis == null) return null;
-    return DateTime.fromMillisecondsSinceEpoch(millis);
+    return DateTime.fromMillisecondsSinceEpoch(int.parse(millis));
   }
 
   @override
-  Future<void> setLastSyncTime(DateTime time) async {
-    await sharedPreferences.setInt(_lastSyncKey, time.millisecondsSinceEpoch);
+  Future<void> setLastSyncTime(DateTime time) =>
+      _db.setMetadata('last_sync_timestamp', time.millisecondsSinceEpoch.toString());
+
+  @override
+  Future<void> markSynced(List<String> ids) => _db.markSynced(ids);
+
+  @override
+  Future<List<Diagnosis>> getPendingDiagnoses() async {
+    final rows = await _db.getPendingDiagnoses();
+    return rows.map((row) {
+      final json = jsonDecode(row['diagnosis_json'] as String) as Map<String, dynamic>;
+      return DiagnosisModel.fromJson(json);
+    }).toList();
   }
 
   @override
-  Future<void> markSynced(List<String> ids) async {
-    final jsonString = sharedPreferences.getString(_pendingKey);
-    if (jsonString == null) return;
-
-    try {
-      final jsonList = jsonDecode(jsonString) as List<dynamic>;
-      final updated = jsonList.map((j) {
-        final map = j as Map<String, dynamic>;
-        if (ids.contains(map['id'])) {
-          return {...map, 'isSynced': true};
-        }
-        return map;
-      }).toList();
-
-      await sharedPreferences.setString(_pendingKey, jsonEncode(updated));
-    } catch (_) {
-      // Ignore write errors
-    }
+  Future<void> savePendingDiagnosis(Diagnosis diagnosis) async {
+    final model = DiagnosisModel.fromEntity(diagnosis);
+    final json = jsonEncode(model.toJson());
+    await _db.insertDiagnosis(diagnosis.id, json);
   }
 }

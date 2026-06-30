@@ -113,24 +113,103 @@ class LeafSyncItem {
         'confidence': confidence,
         if (severity != null) 'severity': severity,
       };
+
+  /// Serializa al formato SyncItemRequest del backend (history-sync-service).
+  /// Cada LeafSyncItem corresponde a una hoja dentro de un SyncItemRequest padre.
+  Map<String, dynamic> toSyncItemJson() => {
+        'localId': localId,
+        'boxX': boxX,
+        'boxY': boxY,
+        'boxWidth': boxWidth,
+        'boxHeight': boxHeight,
+        if (croppedImageBase64 != null) 'croppedImageBase64': croppedImageBase64,
+        'diagnosedPest': diagnosedPest,
+        'confidence': confidence,
+        if (severity != null) 'severity': severity,
+      };
 }
 
 // ─── Batch Sync ────────────────────────────────────────────────────────────────
 
 /// Request del POST /sync/batch — sincroniza un lote de diagnósticos offline.
-class SyncBatchRequest {
-  final String userId;
-  final List<DiagnosisSyncRequest> diagnoses;
+///
+/// El userId se toma del JWT en el Authorization header; no se envía en el body.
+/// Cada SyncItemRequest corresponde a un Diagnosis completo (todas sus hojas).
+class SyncItemRequest {
+  /// ID local del diagnóstico (generado en el dispositivo, UUID).
+  final String localDiagnosisId;
+  final String pestType;
+  final double? confidence;
+  final double? severity;
+  final String? latitude;
+  final String? longitude;
+  final DateTime capturedAt;
+  /// Imagen original codificada en base64 (opcional).
+  final String? imageBase64;
 
-  const SyncBatchRequest({
-    required this.userId,
-    required this.diagnoses,
+  const SyncItemRequest({
+    required this.localDiagnosisId,
+    required this.pestType,
+    this.confidence,
+    this.severity,
+    this.latitude,
+    this.longitude,
+    required this.capturedAt,
+    this.imageBase64,
   });
 
+  /// Serializa el ítem a JSON — coincide con el formato que el backend
+  /// espera dentro del campo 'payload' del DiagnosisSyncEvent.
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'diagnoses': diagnoses.map((d) => d.toJson()).toList(),
+        'localDiagnosisId': localDiagnosisId,
+        'pestType': pestType,
+        if (confidence != null) 'confidence': confidence,
+        if (severity != null) 'severity': severity,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        'capturedAt': capturedAt.toIso8601String(),
+        if (imageBase64 != null) 'imageBase64': imageBase64,
       };
+}
+
+/// Request del POST /sync/batch — sincroniza un lote de diagnósticos offline.
+///
+/// El userId se toma del JWT en el Authorization header; no se envía en el body.
+class SyncBatchRequest {
+  final List<SyncItemRequest> items;
+
+  const SyncBatchRequest({required this.items});
+
+  Map<String, dynamic> toJson() => {
+        'items': items.map((item) => item.toJson()).toList(),
+      };
+}
+
+/// Campos que el backend history-sync-service devuelve tras aceptar un lote.
+class SyncBatchResponse {
+  final String batchId;
+  final int received;
+  final int queued;
+  final int duplicates;
+  final String status;
+
+  const SyncBatchResponse({
+    required this.batchId,
+    required this.received,
+    required this.queued,
+    required this.duplicates,
+    required this.status,
+  });
+
+  factory SyncBatchResponse.fromJson(Map<String, dynamic> json) {
+    return SyncBatchResponse(
+      batchId: json['batchId'] as String,
+      received: json['received'] as int,
+      queued: json['queued'] as int,
+      duplicates: json['duplicates'] as int,
+      status: json['status'] as String,
+    );
+  }
 }
 
 /// Response del GET /sync/status — estado de la cola de sincronización.

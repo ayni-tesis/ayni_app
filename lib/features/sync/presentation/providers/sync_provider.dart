@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../diagnosis/domain/repositories/diagnosis_repository.dart';
-import '../../../diagnosis/presentation/providers/diagnosis_provider.dart';
+import '../../data/datasources/sync_database.dart';
 import '../../data/datasources/sync_local_datasource.dart';
+import '../../data/datasources/sync_remote_datasource.dart';
 import '../../data/repositories/sync_repository_impl.dart';
 import '../../domain/entities/sync_status.dart';
 import '../../domain/repositories/sync_repository.dart';
@@ -11,31 +12,63 @@ import '../../../diagnosis/domain/entities/diagnosis.dart';
 
 // ─── DataSource & Repository ─────────────────────────────────────────────────
 
+/// Singleton de la base de datos sqflite de sincronización.
+final syncDatabaseProvider = Provider<SyncDatabase>((ref) {
+  return SyncDatabase();
+});
+
 final syncLocalDataSourceProvider = Provider<SyncLocalDataSource>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  return SyncLocalDataSourceImpl(sharedPreferences: prefs);
+  final db = ref.watch(syncDatabaseProvider);
+  return SyncLocalDataSourceImpl(db: db);
+});
+
+final syncRemoteDataSourceProvider = Provider<SyncRemoteDataSource>((ref) {
+  final apiClient = ref.watch(apiClientProvider);
+  return SyncRemoteDataSourceImpl(api: apiClient);
 });
 
 final syncRepositoryProvider = Provider<SyncRepository>((ref) {
   return SyncRepositoryImpl(
-    diagnosisRepository: ref.watch(diagnosisRepositoryProvider),
     localDataSource: ref.watch(syncLocalDataSourceProvider),
+    remoteDataSource: ref.watch(syncRemoteDataSourceProvider),
   );
 });
 
 // ─── Sync State Notifier ──────────────────────────────────────────────────────
 
+/// Notifier que gestiona el estado de sincronización y escucha cambios de conectividad
+/// para disparar sync automático cuando el dispositivo recupera conexión.
 class SyncNotifier extends StateNotifier<SyncStatus> {
   final SyncRepository _syncRepo;
-  final DiagnosisRepository _diagnosisRepo;
   final ConnectivityService _connectivity;
+  StreamSubscription<bool>? _connectivitySubscription;
 
   SyncNotifier({
     required this._syncRepo,
-    required this._diagnosisRepo,
     required this._connectivity,
   }) : super(const SyncStatus()) {
     _loadStatus();
+    _listenConnectivity();
+  }
+
+  /// Suscribe a cambios de conectividad y dispara sync automático al recuperar conexión.
+  void _listenConnectivity() {
+    _connectivitySubscription = _connectivity.connectivityStream.listen((isOnline) async {
+      if (!isOnline) return;
+      // Dispositivo acaba de recuperar conexión — syncar pending automáticamente.
+      // Solo si no está syncing ya y hay diagnósticos pendientes.
+      if (state.isSyncing) return;
+      final pending = await _syncRepo.getPendingCount();
+      if (pending > 0) {
+        await syncPending();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadStatus() async {
@@ -51,8 +84,9 @@ class SyncNotifier extends StateNotifier<SyncStatus> {
     await _loadStatus();
   }
 
-  /// Attempts to sync all pending diagnoses to the server.
-  /// Returns the number of successfully synced items.
+  /// Envía todos los diagnósticos pendientes en un solo lote a history-sync-service
+  /// (POST /sync/batch). Marca como sincronizados solo si el servidor confirma
+  /// la recepción del batch completo.
   Future<int> syncPending() async {
     if (state.isSyncing) return 0;
 
@@ -78,23 +112,14 @@ class SyncNotifier extends StateNotifier<SyncStatus> {
         return 0;
       }
 
-      int synced = 0;
-      final syncedIds = <String>[];
+      // Enviar lote completo de una vez al history-sync-service
+      final batchResponse = await _syncRepo.syncBatch(pending);
+      final queued = batchResponse.queued;
 
-      for (final diagnosis in pending) {
-        try {
-          // Try to sync each diagnosis to the remote server
-          final result = await _diagnosisRepo.syncDiagnosis(diagnosis);
-          if (result != null) {
-            syncedIds.add(diagnosis.id);
-            synced++;
-          }
-        } catch (_) {
-          // If sync fails for one, continue with others
-        }
-      }
-
-      if (syncedIds.isNotEmpty) {
+      if (queued > 0) {
+        // Marcar todos los diagnósticos del lote como sincronizados.
+        // El servidor publicará sync.completed de forma asíncrona por Kafka.
+        final syncedIds = pending.map((d) => d.id).toList();
         await _syncRepo.markAllAsSynced(syncedIds);
         await _syncRepo.setLastSyncTime(DateTime.now());
       }
@@ -104,10 +129,10 @@ class SyncNotifier extends StateNotifier<SyncStatus> {
         state: SyncState.success,
         pendingCount: remaining,
         lastSyncAt: DateTime.now(),
-        syncedInSession: state.syncedInSession + synced,
+        syncedInSession: state.syncedInSession + queued,
       );
 
-      return synced;
+      return queued;
     } catch (e) {
       state = state.copyWith(
         state: SyncState.error,
@@ -126,7 +151,6 @@ final syncNotifierProvider =
     StateNotifierProvider<SyncNotifier, SyncStatus>((ref) {
   return SyncNotifier(
     syncRepo: ref.watch(syncRepositoryProvider),
-    diagnosisRepo: ref.watch(diagnosisRepositoryProvider),
     connectivity: ref.watch(connectivityServiceProvider),
   );
 });
