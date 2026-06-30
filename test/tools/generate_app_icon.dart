@@ -6,7 +6,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:ayni_app/core/constants/app_colors.dart';
 import 'package:ayni_app/shared/widgets/ayni_logo.dart';
 
 void main() {
@@ -23,24 +22,10 @@ void main() {
     });
 
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         debugShowCheckedModeBanner: false,
         home: RepaintBoundary(
-          child: Container(
-            width: canvasSize,
-            height: canvasSize,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(canvasSize * 0.22),
-            ),
-            child: const Center(
-              child: AyniLogo(
-                size: 560,
-                fill: AppColors.white,
-                veinColor: AppColors.primary,
-              ),
-            ),
-          ),
+          child: AyniLogo(size: canvasSize),
         ),
       ),
     );

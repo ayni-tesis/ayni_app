@@ -202,6 +202,14 @@ class _AppNavigatorState extends ConsumerState<AppNavigator> {
     }
   }
 
+  void _onGetStartedBack() {
+    if (mounted) {
+      setState(() {
+        _currentScreen = AppScreen.connectionChoice;
+      });
+    }
+  }
+
   void _onOfflineSelected() {
     if (mounted) {
       setState(() {
@@ -235,14 +243,6 @@ class _AppNavigatorState extends ConsumerState<AppNavigator> {
     }
   }
 
-  void _onGetStartedSkip() {
-    if (mounted) {
-      setState(() {
-        _currentScreen = AppScreen.home;
-      });
-    }
-  }
-
   void _onLoginComplete() {
     if (mounted) {
       setState(() {
@@ -266,7 +266,7 @@ class _AppNavigatorState extends ConsumerState<AppNavigator> {
         return GetStartedScreen(
           onSignUpTap: _onSignUpSelected,
           onLogInTap: _onLoginSelected,
-          onSkip: _onGetStartedSkip,
+          onBack: _onGetStartedBack,
         );
       case AppScreen.signUp:
         return SignUpScreen(
@@ -382,28 +382,7 @@ class _SplashWidgetState extends State<_SplashWidget>
   }
 
   Widget _buildLogo() {
-    return SizedBox(
-      width: 120,
-      height: 120,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: AppColors.secondary.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const AyniLogo(
-            size: 64,
-            fill: AppColors.white,
-            veinColor: AppColors.primary,
-          ),
-        ],
-      ),
-    );
+    return const AyniLogo(size: 120);
   }
 
   Widget _buildBrandName() {

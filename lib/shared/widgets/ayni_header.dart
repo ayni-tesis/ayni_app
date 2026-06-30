@@ -36,11 +36,7 @@ class AyniHeader extends StatelessWidget implements PreferredSizeWidget {
         child: Row(
           children: [
             // Left: Brand mark
-            const AyniLogo(
-              size: 28,
-              fill: AppColors.primary,
-              veinColor: AppColors.secondary,
-            ),
+            const AyniLogo(size: 32),
             const Spacer(),
             // Center: App Title
             Text(

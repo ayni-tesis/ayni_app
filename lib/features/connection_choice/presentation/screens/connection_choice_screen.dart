@@ -37,8 +37,10 @@ class ConnectionChoiceScreen extends ConsumerWidget {
                 ),
                 child: const Center(
                   child: AyniLogo(
-                    size: 38,
-                    fill: AppColors.primary,
+                    size: 44,
+                    background: null,
+                    faceColor: AppColors.primary,
+                    featureColor: AppColors.secondary,
                     veinColor: AppColors.secondary,
                   ),
                 ),

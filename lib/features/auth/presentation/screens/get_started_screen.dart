@@ -7,13 +7,13 @@ import '../../../../shared/widgets/ayni_logo.dart';
 class GetStartedScreen extends StatelessWidget {
   final VoidCallback onSignUpTap;
   final VoidCallback onLogInTap;
-  final VoidCallback onSkip;
+  final VoidCallback onBack;
 
   const GetStartedScreen({
     super.key,
     required this.onSignUpTap,
     required this.onLogInTap,
-    required this.onSkip,
+    required this.onBack,
   });
 
   @override
@@ -23,16 +23,14 @@ class GetStartedScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppColors.white,
         elevation: 0,
-        actions: [
-          TextButton(
-            onPressed: onSkip,
-            child: Text(
-              'Omitir',
-              style: AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
-            ),
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back,
+            color: AppColors.black2,
+            size: 24,
           ),
-          const SizedBox(width: AppSpacing.s1),
-        ],
+          onPressed: onBack,
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -52,8 +50,10 @@ class GetStartedScreen extends StatelessWidget {
                   ),
                   child: const Center(
                     child: AyniLogo(
-                      size: 38,
-                      fill: AppColors.primary,
+                      size: 44,
+                      background: null,
+                      faceColor: AppColors.primary,
+                      featureColor: AppColors.secondary,
                       veinColor: AppColors.secondary,
                     ),
                   ),
@@ -62,7 +62,7 @@ class GetStartedScreen extends StatelessWidget {
               const SizedBox(height: AppSpacing.s4),
               // Heading
               Text(
-                'Let\'s Get Started!',
+                '¡Comencemos!',
                 style: AppTextStyles.heading4.copyWith(
                   color: AppColors.black2,
                   fontSize: 32,
@@ -71,30 +71,10 @@ class GetStartedScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Let\'s dive in into your account',
+                'Crea tu cuenta o inicia sesión para detectar plagas en tus hojas de café.',
+                textAlign: TextAlign.center,
                 style: AppTextStyles.bodyRegular.copyWith(color: AppColors.gray2),
               ),
-              const SizedBox(height: AppSpacing.s6),
-
-              // Social logins stacked vertically (exactly like Figma)
-              _buildSocialButton(
-                icon: _googleIcon(),
-                label: 'Continue with Google',
-                onTap: () {},
-              ),
-              const SizedBox(height: AppSpacing.s3),
-              _buildSocialButton(
-                icon: const Icon(Icons.facebook, color: Color(0xFF1877F2), size: 24),
-                label: 'Continue with Facebook',
-                onTap: () {},
-              ),
-              const SizedBox(height: AppSpacing.s3),
-              _buildSocialButton(
-                icon: const Icon(Icons.flutter_dash, color: Color(0xFF1DA1F2), size: 24), // Twitter representation
-                label: 'Continue with Twitter',
-                onTap: () {},
-              ),
-
               const SizedBox(height: AppSpacing.s6),
 
               // Action buttons (Sign up and Log in)
@@ -110,7 +90,7 @@ class GetStartedScreen extends StatelessWidget {
                     elevation: 0,
                   ),
                   child: Text(
-                    'Sign up',
+                    'Crear cuenta',
                     style: AppTextStyles.bodyBold.copyWith(color: AppColors.white),
                   ),
                 ),
@@ -128,16 +108,16 @@ class GetStartedScreen extends StatelessWidget {
                     elevation: 0,
                   ),
                   child: Text(
-                    'Log in',
+                    'Iniciar sesión',
                     style: AppTextStyles.bodyBold.copyWith(color: AppColors.primary),
                   ),
                 ),
               ),
               const SizedBox(height: AppSpacing.s6),
 
-              // Footer legal (No divider or 'and', exactly like Figma)
+              // Footer legal
               Text(
-                'Privacy Policy Terms of Service',
+                'Política de privacidad · Términos del servicio',
                 style: AppTextStyles.smallTextRegular.copyWith(
                   color: AppColors.gray3,
                   fontSize: 12,
@@ -147,56 +127,6 @@ class GetStartedScreen extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSocialButton({
-    required Widget icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      height: 54, // Accessible > 48dp
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.black2,
-          side: const BorderSide(color: AppColors.gray5, width: 1),
-          shape: const StadiumBorder(), // Pill shape matching Figma
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-        ),
-        child: Row(
-          children: [
-            icon,
-            const Spacer(),
-            Text(
-              label,
-              style: AppTextStyles.bodyBold.copyWith(
-                color: AppColors.gray1,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const Spacer(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _googleIcon() {
-    return SizedBox(
-      width: 22,
-      height: 22,
-      child: Stack(
-        children: [
-          Positioned(right: 0, top: 0, child: Container(width: 11, height: 11, decoration: const BoxDecoration(color: Color(0xFFEA4335), shape: BoxShape.circle))),
-          Positioned(left: 0, top: 0, child: Container(width: 11, height: 11, decoration: const BoxDecoration(color: Color(0xFF4285F4), shape: BoxShape.circle))),
-          Positioned(right: 0, bottom: 0, child: Container(width: 11, height: 11, decoration: const BoxDecoration(color: Color(0xFFFBBC05), shape: BoxShape.circle))),
-          Positioned(left: 0, bottom: 0, child: Container(width: 11, height: 11, decoration: const BoxDecoration(color: Color(0xFF34A853), shape: BoxShape.circle))),
-        ],
       ),
     );
   }
