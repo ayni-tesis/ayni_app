@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/network/connectivity_service.dart';
+import '../../../../shared/widgets/ayni_logo.dart';
 
 class ConnectionChoiceScreen extends ConsumerWidget {
   final VoidCallback onOnlineSelected;
@@ -34,10 +35,12 @@ class ConnectionChoiceScreen extends ConsumerWidget {
                   color: AppColors.secondary,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.eco_rounded,
-                  size: 44,
-                  color: AppColors.primary,
+                child: const Center(
+                  child: AyniLogo(
+                    size: 38,
+                    fill: AppColors.primary,
+                    veinColor: AppColors.secondary,
+                  ),
                 ),
               ),
               const SizedBox(height: AppSpacing.s4),

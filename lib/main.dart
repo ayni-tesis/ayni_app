@@ -1,9 +1,13 @@
+import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/services/version_check_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/constants/app_colors.dart';
 import 'core/constants/app_spacing.dart';
@@ -17,7 +21,9 @@ import 'features/auth/presentation/screens/sign_up_screen.dart';
 import 'features/home/presentation/screens/home_screen.dart';
 import 'features/notifications/presentation/providers/notifications_provider.dart';
 import 'features/profile/presentation/providers/profile_provider.dart';
+import 'features/profile/presentation/widgets/version_widgets.dart';
 import 'firebase_options.dart';
+import 'shared/widgets/ayni_logo.dart';
 
 /// Background FCM handler. Must be a top-level function (not a method)
 /// so it survives the app being terminated by the OS. When the user
@@ -33,6 +39,17 @@ void main() async {
 
   // Initialize Firebase BEFORE any feature tries to read an FCM token.
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Pass all uncaught errors from the framework to Crashlytics.
+  FlutterError.onError = (errorDetails) {
+    FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
+  };
+
+  // Pass all uncaught asynchronous errors that aren't handled by the Flutter framework to Crashlytics.
+  PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
 
   // Register the background handler BEFORE runApp so the OS can invoke
   // it while the app is terminated.
@@ -115,18 +132,52 @@ class _AppNavigatorState extends ConsumerState<AppNavigator> {
         _hasSeenOnboarding = hasSeenOnboarding;
         _currentScreen = AppScreen.splash;
       });
-      // After splash delay, route based on auth state.
-      Future.delayed(const Duration(milliseconds: 2500), () {
+    }
+
+    // Run version check.
+    final versionResult = await ref.read(versionCheckServiceProvider).checkAppVersion();
+
+    if (versionResult != null) {
+      if (versionResult.forceUpdate) {
+        // Block startup and show dialog.
         if (mounted) {
-          setState(() {
-            if (isAuthenticated) {
-              _currentScreen = AppScreen.home;
-            } else if (_hasSeenOnboarding) {
-              _currentScreen = AppScreen.connectionChoice;
-            } else {
-              _currentScreen = AppScreen.onboarding;
-            }
-          });
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => UpdateDialog(
+              minimumVersion: versionResult.minimumVersion,
+              updateUrl: versionResult.updateUrl,
+              forceUpdate: true,
+            ),
+          );
+        }
+        return; // Halt further routing.
+      } else {
+        // Optional update: show dialog but proceed with routing.
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: true,
+            builder: (context) => UpdateDialog(
+              minimumVersion: versionResult.minimumVersion,
+              updateUrl: versionResult.updateUrl,
+              forceUpdate: false,
+            ),
+          );
+        }
+      }
+    }
+
+    // After splash delay, route based on auth state.
+    await Future.delayed(const Duration(milliseconds: 2500));
+    if (mounted) {
+      setState(() {
+        if (isAuthenticated) {
+          _currentScreen = AppScreen.home;
+        } else if (_hasSeenOnboarding) {
+          _currentScreen = AppScreen.connectionChoice;
+        } else {
+          _currentScreen = AppScreen.onboarding;
         }
       });
     }
@@ -345,26 +396,10 @@ class _SplashWidgetState extends State<_SplashWidget>
               shape: BoxShape.circle,
             ),
           ),
-          const Icon(
-            Icons.eco_rounded,
+          const AyniLogo(
             size: 64,
-            color: AppColors.secondary,
-          ),
-          Positioned(
-            right: 8,
-            top: 8,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: AppColors.white.withValues(alpha: 0.9),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.search_rounded,
-                size: 24,
-                color: AppColors.primary,
-              ),
-            ),
+            fill: AppColors.white,
+            veinColor: AppColors.primary,
           ),
         ],
       ),

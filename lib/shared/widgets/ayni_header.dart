@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_spacing.dart';
 import '../../../../features/notifications/presentation/screens/notifications_screen.dart';
+import 'ayni_logo.dart';
 
 class AyniHeader extends StatelessWidget implements PreferredSizeWidget {
   final String title;
@@ -34,11 +35,11 @@ class AyniHeader extends StatelessWidget implements PreferredSizeWidget {
         bottom: false,
         child: Row(
           children: [
-            // Left: Brand leaf icon
-            const Icon(
-              Icons.eco_rounded,
-              color: AppColors.primary,
-              size: 32,
+            // Left: Brand mark
+            const AyniLogo(
+              size: 28,
+              fill: AppColors.primary,
+              veinColor: AppColors.secondary,
             ),
             const Spacer(),
             // Center: App Title

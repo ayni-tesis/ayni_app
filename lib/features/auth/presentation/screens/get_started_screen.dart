@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../../shared/widgets/ayni_logo.dart';
 
 class GetStartedScreen extends StatelessWidget {
   final VoidCallback onSignUpTap;
@@ -49,10 +50,12 @@ class GetStartedScreen extends StatelessWidget {
                     color: AppColors.secondary,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.eco_rounded,
-                    size: 44,
-                    color: AppColors.primary,
+                  child: const Center(
+                    child: AyniLogo(
+                      size: 38,
+                      fill: AppColors.primary,
+                      veinColor: AppColors.secondary,
+                    ),
                   ),
                 ),
               ),
