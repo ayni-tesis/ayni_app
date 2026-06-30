@@ -4,6 +4,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../providers/profile_provider.dart';
+import '../widgets/version_widgets.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -95,6 +96,8 @@ class ProfileScreen extends ConsumerWidget {
                   _Item('Comunidad', profile.communityName ?? '—'),
                 ],
               ),
+              const SizedBox(height: AppSpacing.s2),
+              const VersionCard(),
             ],
           );
         },
