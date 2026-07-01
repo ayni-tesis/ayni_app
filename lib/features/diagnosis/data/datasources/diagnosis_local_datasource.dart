@@ -114,6 +114,9 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
     for (int col = 0; col < 8400; col++) {
       final confidence = outputBuffer[4 * 8400 + col];
       if (confidence > confThresh) {
+        // NOTE: coordinate scale (pixels 0-640 vs normalized 0-1) is
+        // unconfirmed for this specific export — see debug prints below.
+        // Do not assume either way without empirical data from a device run.
         final cx = outputBuffer[0 * 8400 + col];
         final cy = outputBuffer[1 * 8400 + col];
         final w = outputBuffer[2 * 8400 + col];
@@ -195,15 +198,20 @@ class DiagnosisLocalDataSourceImpl implements DiagnosisLocalDataSource {
     return result;
   }
 
+  /// Model input tensor shape is [1, 3, 640, 640] — NCHW (channel-first):
+  /// the full R plane, then the full G plane, then the full B plane.
+  /// Writing interleaved RGB per-pixel (NHWC) here silently "fits" the
+  /// buffer size but scrambles what the model sees per channel.
   Float32List _preprocessYoloInput(img_lib.Image image) {
     final buffer = Float32List(1 * 3 * 640 * 640);
-    int idx = 0;
+    const channelSize = 640 * 640;
     for (int y = 0; y < 640; y++) {
       for (int x = 0; x < 640; x++) {
         final pixel = image.getPixel(x, y);
-        buffer[idx++] = pixel.r / 255.0;  // R channel
-        buffer[idx++] = pixel.g / 255.0;  // G channel
-        buffer[idx++] = pixel.b / 255.0;  // B channel
+        final idx = y * 640 + x;
+        buffer[idx] = pixel.r / 255.0; // R plane
+        buffer[channelSize + idx] = pixel.g / 255.0; // G plane
+        buffer[2 * channelSize + idx] = pixel.b / 255.0; // B plane
       }
     }
     return buffer;
