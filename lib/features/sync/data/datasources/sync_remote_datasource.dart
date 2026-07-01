@@ -31,6 +31,12 @@ class SyncRemoteDataSourceImpl implements SyncRemoteDataSource {
       final response = await _api.post<Map<String, dynamic>>(
         '/diagnoses/sync/batch',
         data: request.toJson(),
+        // Subida de imágenes (base64) + almacenamiento en Azure Blob: timeout
+        // holgado por-petición, por encima del receiveTimeout global de 60s.
+        options: Options(
+          sendTimeout: const Duration(seconds: 120),
+          receiveTimeout: const Duration(seconds: 120),
+        ),
       );
       return SyncBatchResponse.fromJson(response.data!);
     } on DioException catch (e) {

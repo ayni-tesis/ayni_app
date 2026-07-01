@@ -31,8 +31,12 @@ class ApiClient {
     _dio = Dio(
       BaseOptions(
         baseUrl: _kDefaultBaseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
+        // Timeouts globales holgados: las respuestas del backend pueden tardar
+        // (inferencia ML online hasta ~65s, subida de imagen a Azure Blob). 15s
+        // era demasiado bajo y causaba receiveTimeout. Las subidas pesadas usan
+        // un timeout aún mayor por-petición (ver ApiClient.post / syncBatch).
+        connectTimeout: const Duration(seconds: 20),
+        receiveTimeout: const Duration(seconds: 60),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -63,8 +67,14 @@ class ApiClient {
     String path, {
     dynamic data,
     Map<String, dynamic>? queryParameters,
+    Options? options,
   }) =>
-      _dio.post<T>(path, data: data, queryParameters: queryParameters);
+      _dio.post<T>(
+        path,
+        data: data,
+        queryParameters: queryParameters,
+        options: options,
+      );
 
   Future<Response<T>> patch<T>(
     String path, {
@@ -181,6 +191,21 @@ class _AuthInterceptor extends Interceptor {
 class _ErrorInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
+    // Timeouts (conexión/envío/recepción): mensaje claro en vez del texto crudo de Dio.
+    if (err.type == DioExceptionType.connectionTimeout ||
+        err.type == DioExceptionType.sendTimeout ||
+        err.type == DioExceptionType.receiveTimeout) {
+      return handler.next(DioException(
+        requestOptions: err.requestOptions,
+        response: err.response,
+        type: err.type,
+        error: err.error,
+        message:
+            'La operación tardó demasiado. Puede deberse a imágenes grandes o '
+            'a una conexión lenta; vuelve a intentarlo.',
+      ));
+    }
+
     final statusCode = err.response?.statusCode;
     final serverMessage = err.response?.data?['message'] as String?;
 
