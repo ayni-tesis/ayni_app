@@ -6,6 +6,7 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../diagnosis/domain/entities/diagnosis.dart';
 import '../../../diagnosis/domain/entities/pest_type.dart';
+import '../../../diagnosis/presentation/providers/diagnosis_provider.dart';
 import '../../domain/entities/sync_status.dart';
 import '../providers/sync_provider.dart';
 
@@ -20,9 +21,26 @@ class _SyncStatusScreenState extends ConsumerState<SyncStatusScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(syncNotifierProvider.notifier).refresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Backfill: diagnósticos offline guardados antes de que existiera la
+      // cola de sync (o por cualquier otra razón no encolados) no aparecen
+      // en sync_queue. Los reconciliamos aquí para que no queden huérfanos.
+      await _reconcilePendingDiagnoses();
+      if (!mounted) return;
+      await ref.read(syncNotifierProvider.notifier).refresh();
+      ref.invalidate(pendingDiagnosesProvider);
     });
+  }
+
+  Future<void> _reconcilePendingDiagnoses() async {
+    final historyResult = await ref.read(getDiagnosisHistoryUseCaseProvider)();
+    final history = historyResult.fold((_) => <Diagnosis>[], (h) => h);
+    final unsyncedOffline = history.where((d) => d.isOffline && !d.isSynced);
+
+    final syncRepo = ref.read(syncRepositoryProvider);
+    for (final diagnosis in unsyncedOffline) {
+      await syncRepo.savePendingDiagnosis(diagnosis);
+    }
   }
 
   @override

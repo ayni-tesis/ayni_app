@@ -13,6 +13,7 @@ import '../../domain/usecases/classify_pests_usecase.dart';
 import '../../domain/usecases/detect_leaves_usecase.dart';
 import '../../domain/usecases/get_diagnosis_history_usecase.dart';
 import '../../domain/usecases/save_diagnosis_usecase.dart';
+import '../../../sync/presentation/providers/sync_provider.dart';
 
 // Data Sources Providers
 final diagnosisLocalDataSourceProvider = Provider<DiagnosisLocalDataSource>((ref) {
@@ -219,17 +220,27 @@ class DiagnosisNotifier extends StateNotifier<DiagnosisState> {
 
     final result = await _saveDiagnosisUseCase(diagnosis);
 
-    return result.fold(
+    final saved = result.fold(
       (failure) {
         state = state.copyWith(error: failure.message);
         return false;
       },
-      (_) {
-        // Refresh history list provider
-        _ref.invalidate(diagnosisHistoryProvider);
-        return true;
-      },
+      (_) => true,
     );
+    if (!saved) return false;
+
+    // Diagnóstico offline: encolarlo también en sync_queue (sqflite) para
+    // que la pantalla de sincronización lo detecte como pendiente.
+    // El historial local (SharedPreferences) y la cola de sync son
+    // almacenes separados — guardar en uno no llena el otro.
+    if (diagnosis.isOffline) {
+      await _ref.read(syncRepositoryProvider).savePendingDiagnosis(diagnosis);
+      await _ref.read(syncNotifierProvider.notifier).refresh();
+    }
+
+    // Refresh history list provider
+    _ref.invalidate(diagnosisHistoryProvider);
+    return true;
   }
 
   void reset() {
