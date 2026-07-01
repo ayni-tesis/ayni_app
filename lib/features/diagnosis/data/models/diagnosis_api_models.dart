@@ -4,7 +4,7 @@
 //   POST /diagnoses/analyze      → DiagnosisAnalyzeResponse
 //   POST /diagnoses/sync        ← DiagnosisSyncRequest
 //   GET  /diagnoses/{id}        → DiagnosisAnalyzeResponse
-//   POST /sync/batch            ← SyncBatchRequest
+//   POST /diagnoses/sync/batch  ← SyncBatchRequest
 //   GET  /sync/status           → SyncStatusResponse
 
 // ─── Analyze (online diagnosis) ────────────────────────────────────────────────
@@ -158,13 +158,13 @@ class SyncItemRequest {
     this.imageBase64,
   });
 
-  /// Serializa el ítem a JSON — coincide con el formato que el backend
-  /// espera dentro del campo 'payload' del DiagnosisSyncEvent.
+  /// Serializa el ítem a JSON con los nombres que espera diagnosis-service
+  /// (POST /diagnoses/sync/batch → SyncDiagnosisRequest).
   Map<String, dynamic> toJson() => {
         'localDiagnosisId': localDiagnosisId,
-        'pestType': pestType,
-        if (confidence != null) 'confidence': confidence,
-        if (severity != null) 'severity': severity,
+        'detectedPest': pestType,
+        if (confidence != null) 'confidenceScore': confidence,
+        if (severity != null) 'severityLevel': severity,
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
         'capturedAt': capturedAt.toIso8601String(),
@@ -185,7 +185,7 @@ class SyncBatchRequest {
       };
 }
 
-/// Campos que el backend history-sync-service devuelve tras aceptar un lote.
+/// Resumen que diagnosis-service devuelve tras procesar un lote de sincronización.
 class SyncBatchResponse {
   final String batchId;
   final int received;

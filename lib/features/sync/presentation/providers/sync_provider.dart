@@ -84,9 +84,10 @@ class SyncNotifier extends StateNotifier<SyncStatus> {
     await _loadStatus();
   }
 
-  /// Envía todos los diagnósticos pendientes en un solo lote a history-sync-service
-  /// (POST /sync/batch). Marca como sincronizados solo si el servidor confirma
-  /// la recepción del batch completo.
+  /// Envía todos los diagnósticos pendientes en un solo lote a diagnosis-service
+  /// (POST /diagnoses/sync/batch): sube la imagen original a Azure Blob y publica
+  /// diagnosis.created para el dashboard. Marca como sincronizados solo si el
+  /// servidor confirma el lote (queued > 0).
   Future<int> syncPending() async {
     if (state.isSyncing) return 0;
 
@@ -112,13 +113,13 @@ class SyncNotifier extends StateNotifier<SyncStatus> {
         return 0;
       }
 
-      // Enviar lote completo de una vez al history-sync-service
+      // Enviar lote completo de una vez a diagnosis-service
       final batchResponse = await _syncRepo.syncBatch(pending);
       final queued = batchResponse.queued;
 
       if (queued > 0) {
         // Marcar todos los diagnósticos del lote como sincronizados.
-        // El servidor publicará sync.completed de forma asíncrona por Kafka.
+        // diagnosis-service publica diagnosis.created de forma asíncrona por Kafka.
         final syncedIds = pending.map((d) => d.id).toList();
         await _syncRepo.markAllAsSynced(syncedIds);
         await _syncRepo.setLastSyncTime(DateTime.now());

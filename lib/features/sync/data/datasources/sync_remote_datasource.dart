@@ -2,14 +2,17 @@ import 'package:dio/dio.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../diagnosis/data/models/diagnosis_api_models.dart';
 
-/// Contrato con el history-sync-service vía API Gateway.
+/// Contrato con el diagnosis-service vía API Gateway.
 ///
-/// Usa POST /sync/batch para sincronizar lotes de diagnósticos offline.
-/// El userId se toma del JWT en el Authorization header; no se envía en el body.
+/// Usa POST /diagnoses/sync/batch para sincronizar lotes de diagnósticos offline:
+/// diagnosis-service es el dueño único del diagnóstico (sube la imagen original a
+/// Azure Blob y publica diagnosis.created para el dashboard). El userId se toma del
+/// JWT en el Authorization header; no se envía en el body.
 abstract class SyncRemoteDataSource {
-  /// POST /sync/batch — sincroniza un lote de diagnósticos offline.
+  /// POST /diagnoses/sync/batch — sincroniza un lote de diagnósticos offline.
   ///
-  /// El servidor responde 202 Accepted y procesa los ítems de forma asíncrona.
+  /// Procesa cada ítem de forma idempotente por (userId, localDiagnosisId) y
+  /// devuelve el resumen {received, queued, duplicates, status}.
   Future<SyncBatchResponse> syncBatch(SyncBatchRequest request);
 
   /// GET /sync/status — estado actual de la cola de sincronización del usuario.
@@ -26,7 +29,7 @@ class SyncRemoteDataSourceImpl implements SyncRemoteDataSource {
   Future<SyncBatchResponse> syncBatch(SyncBatchRequest request) async {
     try {
       final response = await _api.post<Map<String, dynamic>>(
-        '/sync/batch',
+        '/diagnoses/sync/batch',
         data: request.toJson(),
       );
       return SyncBatchResponse.fromJson(response.data!);

@@ -116,7 +116,7 @@ class SyncRepositoryImpl implements SyncRepository {
       case 'HEALTHY':
         return 'HEALTHY';
       case 'REDSPIDER':
-        return 'RED_SPIDER';
+        return 'REDSPIDER';
       default:
         return name;
     }
