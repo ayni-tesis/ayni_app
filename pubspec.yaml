@@ -2,7 +2,7 @@ name: ayni_app
 description: "Aplicación móvil para detección temprana de plagas en hojas de café"
 publish_to: 'none'
 
-version: 1.0.4
+version: 1.0.5
 
 environment:
   sdk: ^3.12.2
