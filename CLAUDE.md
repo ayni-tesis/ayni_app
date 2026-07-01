@@ -406,6 +406,8 @@ Production: https://api.ayni.pe/api
 |---|---|---|
 | POST | `/auth/login` | Login, retorna JWT |
 | POST | `/auth/register` | Registro |
+| POST | `/auth/forgot-password` | Recuperar contraseña — envía código OTP de 6 dígitos por correo (HU0039) |
+| POST | `/auth/reset-password` | Confirmar el reseteo con `{ email, code, newPassword }` (HU0039) |
 | POST | `/diagnoses/analyze` | Diagnóstico online (multipart) |
 | POST | `/sync/batch` | Sincronizar lote offline |
 | GET | `/history` | Historial de diagnósticos |

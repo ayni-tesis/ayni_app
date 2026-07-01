@@ -5,6 +5,7 @@ import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 import '../providers/auth_provider.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   final VoidCallback onLoginSuccess;
@@ -165,7 +166,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             const Text('Recordarme'),
                             const Spacer(),
                             TextButton(
-                              onPressed: () {},
+                              onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ForgotPasswordScreen(),
+                                ),
+                              ),
                               child: Text(
                                 '¿Olvidaste tu contraseña?',
                                 style: AppTextStyles.smallTextRegular

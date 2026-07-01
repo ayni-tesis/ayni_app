@@ -144,6 +144,38 @@ class AuthRepositoryImpl implements AuthRepository {
     await _clearSession();
   }
 
+  @override
+  Future<Either<Failure, void>> requestPasswordReset({required String email}) async {
+    try {
+      await _remote.forgotPassword(ForgotPasswordRequest(email: email));
+      return const Right(null);
+    } on DioException catch (e) {
+      return Left(AuthFailure(e.message ?? 'No se pudo enviar el código. Intenta de nuevo.'));
+    } catch (e) {
+      return Left(AuthFailure('Error inesperado: ${e.toString()}'));
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> confirmPasswordReset({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    try {
+      await _remote.resetPassword(ResetPasswordRequest(
+        email: email,
+        code: code,
+        newPassword: newPassword,
+      ));
+      return const Right(null);
+    } on DioException catch (e) {
+      return Left(AuthFailure(e.message ?? 'No se pudo cambiar la contraseña. Intenta de nuevo.'));
+    } catch (e) {
+      return Left(AuthFailure('Error inesperado: ${e.toString()}'));
+    }
+  }
+
   // ─── Private helpers ─────────────────────────────────────────────────────────
 
   Future<void> _persistApiSession(AuthResponse response) async {

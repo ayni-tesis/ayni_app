@@ -132,6 +132,34 @@ class RefreshRequest {
   Map<String, dynamic> toJson() => {'refreshToken': refreshToken};
 }
 
+/// DTO para el body de `/auth/forgot-password`.
+class ForgotPasswordRequest {
+  final String email;
+
+  const ForgotPasswordRequest({required this.email});
+
+  Map<String, dynamic> toJson() => {'email': email};
+}
+
+/// DTO para el body de `/auth/reset-password`. El código OTP tiene 6 dígitos (HU0039).
+class ResetPasswordRequest {
+  final String email;
+  final String code;
+  final String newPassword;
+
+  const ResetPasswordRequest({
+    required this.email,
+    required this.code,
+    required this.newPassword,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'email': email,
+        'code': code,
+        'newPassword': newPassword,
+      };
+}
+
 /// Respuesta de `/auth/refresh` — mismos campos que AuthResponse.
 class RefreshResponse {
   final String accessToken;

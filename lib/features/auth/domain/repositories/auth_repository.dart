@@ -39,4 +39,17 @@ abstract class AuthRepository {
   /// Logs the current user out and clears the persisted session.
   /// The user profile on the device is left untouched.
   Future<void> logout();
+
+  /// Requests a password-reset OTP code by email (HU0039). Requires connectivity —
+  /// there is no offline fallback. The backend always succeeds with a generic message
+  /// regardless of whether the email is registered (avoids account enumeration).
+  Future<Either<Failure, void>> requestPasswordReset({required String email});
+
+  /// Confirms the password reset with the 6-digit OTP code received by email.
+  /// Returns a [Failure] if the code is invalid, expired, or already used.
+  Future<Either<Failure, void>> confirmPasswordReset({
+    required String email,
+    required String code,
+    required String newPassword,
+  });
 }

@@ -70,4 +70,23 @@ class AuthRemoteDataSource {
       throw Exception(e.message);
     }
   }
+
+  /// POST /auth/forgot-password — envía el código OTP de 6 dígitos por correo.
+  /// Siempre responde 202 (mensaje genérico), exista o no el correo (HU0039).
+  Future<void> forgotPassword(ForgotPasswordRequest request) async {
+    try {
+      await _api.post('/auth/forgot-password', data: request.toJson());
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
+
+  /// POST /auth/reset-password — confirma el reseteo con el código recibido por correo.
+  Future<void> resetPassword(ResetPasswordRequest request) async {
+    try {
+      await _api.post('/auth/reset-password', data: request.toJson());
+    } on DioException catch (e) {
+      throw Exception(e.message);
+    }
+  }
 }
