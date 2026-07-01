@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import '../../../diagnosis/domain/entities/diagnosis.dart';
+import '../../../diagnosis/domain/entities/leaf_detection.dart';
 import '../../../diagnosis/domain/entities/pest_type.dart';
 import '../../../diagnosis/data/models/diagnosis_api_models.dart';
 import '../../domain/repositories/sync_repository.dart';
@@ -48,9 +49,16 @@ class SyncRepositoryImpl implements SyncRepository {
 
     for (final diagnosis in diagnoses) {
       // Determinar la plaga dominante: la de mayor severity entre las infectadas.
-      final infectedLeaves = diagnosis.detectedLeaves
-          .where((l) => l.diagnosedPest != null && l.diagnosedPest != PestType.healthy)
-          .toList();
+      // Materializar en un List<LeafDetection> reificado: el modelo persiste las hojas
+      // como LeafDetectionModel, y reduce() reifica su función `combine` sobre el tipo
+      // en runtime. Un closure (LeafDetection, …) => LeafDetection NO es subtipo de
+      // (LeafDetectionModel, …) => LeafDetectionModel (el retorno es covariante), y eso
+      // rompía la sincronización. El literal <LeafDetection>[...] fija el tipo correcto.
+      final infectedLeaves = <LeafDetection>[
+        ...diagnosis.detectedLeaves.where(
+          (l) => l.diagnosedPest != null && l.diagnosedPest != PestType.healthy,
+        ),
+      ];
 
       String dominantPest;
       double? dominantSeverity;
