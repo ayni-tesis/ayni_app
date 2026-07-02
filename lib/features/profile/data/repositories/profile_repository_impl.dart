@@ -70,6 +70,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
   }
 
   /// Registra el token FCM en el servidor para recibir push notifications.
+  @override
   Future<void> updateFcmToken(String fcmToken) async {
     try {
       final isOnline = await _connectivity.isConnected();

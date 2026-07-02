@@ -201,19 +201,20 @@ class NotificationsFcmDataSource {
     );
   }
 
-  /// Maps a backend-supplied `type` string into our enum. Unknown
-  /// values fall back to `other` rather than crashing.
+  /// Maps the backend's `NotificationType` enum name (sent verbatim in the
+  /// FCM `data.type` field — see notification-service's `deliverPush`) into
+  /// our domain enum. Unknown values (e.g. `PASSWORD_RESET`, for which
+  /// there's no dedicated UI type yet) fall back to `other` rather than
+  /// crashing.
   NotificationType _classifyType(String? raw) {
-    switch (raw) {
-      case 'sync.completed':
+    switch (raw?.toUpperCase()) {
+      case 'SYNC_SUCCESS':
         return NotificationType.syncCompleted;
-      case 'pest.alert':
+      case 'PEST_ALERT':
         return NotificationType.pestAlert;
-      case 'recommendation':
+      case 'RECOMMENDATION':
         return NotificationType.recommendation;
-      case 'system.update':
-        return NotificationType.systemUpdate;
-      case 'diagnosis.complete':
+      case 'DIAGNOSIS_COMPLETE':
         return NotificationType.diagnosisComplete;
       default:
         return NotificationType.other;

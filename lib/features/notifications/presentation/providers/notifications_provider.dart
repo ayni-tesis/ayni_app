@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../profile/domain/repositories/profile_repository.dart';
+import '../../../profile/presentation/providers/profile_provider.dart';
 import '../../data/datasources/notifications_fcm_datasource.dart';
 import '../../data/datasources/notifications_local_datasource.dart';
 import '../../data/datasources/notification_remote_datasource.dart';
@@ -46,10 +48,12 @@ class NotificationsNotifier
     extends StateNotifier<AsyncValue<List<NotificationItem>>> {
   final NotificationsRepository _repository;
   final NotificationsFcmDataSource _fcm;
+  final ProfileRepository _profileRepository;
   StreamSubscription<NotificationItem>? _receivedSub;
   StreamSubscription<NotificationItem>? _openedSub;
+  StreamSubscription<String>? _tokenRefreshSub;
 
-  NotificationsNotifier(this._repository, this._fcm)
+  NotificationsNotifier(this._repository, this._fcm, this._profileRepository)
       : super(const AsyncValue.loading()) {
     _bootstrap();
   }
@@ -73,6 +77,16 @@ class NotificationsNotifier
     //    onMessage / onMessageOpenedApp and triggers our stream
     //    bridge inside the repository.
     await _fcm.initialize();
+
+    // 3b. Register the current token (covers app relaunch with an
+    //     already-authenticated session) and keep it in sync if FCM
+    //     rotates it while the app is running. A fresh login/signup
+    //     also calls registerFcmToken() explicitly, since bootstrap()
+    //     runs at app start, before the user may have signed in.
+    unawaited(registerFcmToken());
+    _tokenRefreshSub = _fcm.onTokenRefresh.listen((token) {
+      _profileRepository.updateFcmToken(token);
+    });
 
     // 4. If the user opened the app by tapping a notification, mark
     //    it read so the badge clears.
@@ -120,10 +134,21 @@ class NotificationsNotifier
   /// auth flow) is responsible for sending it to the backend.
   Future<String?> getDeviceToken() => _fcm.getDeviceToken();
 
+  /// Fetches the current FCM device token and registers it with the
+  /// backend so push notifications can be targeted at this device.
+  /// Called on app bootstrap and again right after login/signup,
+  /// since bootstrap can run before the user is authenticated.
+  Future<void> registerFcmToken() async {
+    final token = await _fcm.getDeviceToken();
+    if (token == null) return;
+    await _profileRepository.updateFcmToken(token);
+  }
+
   @override
   void dispose() {
     _receivedSub?.cancel();
     _openedSub?.cancel();
+    _tokenRefreshSub?.cancel();
     _fcm.dispose();
     super.dispose();
   }
@@ -150,7 +175,11 @@ final notificationsProvider = StateNotifierProvider<NotificationsNotifier,
     remote: remote,
     connectivity: ref.watch(connectivityServiceProvider),
   );
-  final notifier = NotificationsNotifier(repo, fcm);
+  final notifier = NotificationsNotifier(
+    repo,
+    fcm,
+    ref.watch(profileRepositoryProvider),
+  );
   ref.onDispose(() {
     repo.dispose();
   });

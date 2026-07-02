@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../notifications/presentation/providers/notifications_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 import '../providers/auth_provider.dart';
 import 'forgot_password_screen.dart';
@@ -46,6 +47,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // Seed the profile from the auth user so the Account tab has
       // data to render on the very first login.
       await ref.read(profileNotifierProvider.notifier).ensureSeededFromAuth();
+      // Register this device's FCM token now that we have a valid
+      // session; bootstrap() alone can't do this on a fresh login.
+      await ref.read(notificationsProvider.notifier).registerFcmToken();
       if (!mounted) return;
       widget.onLoginSuccess();
     } else {

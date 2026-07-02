@@ -76,10 +76,11 @@ class NotificationResponse {
   }
 
   /// Convierte el tipo string del API al NotificationType del dominio.
-  /// API: SYNC_COMPLETED | PEST_ALERT | RECOMMENDATION | DIAGNOSIS_COMPLETE | SYSTEM_UPDATE
+  /// API (NotificationType.name() del backend): SYNC_SUCCESS | PEST_ALERT |
+  /// RECOMMENDATION | DIAGNOSIS_COMPLETE | PASSWORD_RESET
   String toDomainType() {
     switch (type) {
-      case 'SYNC_COMPLETED':
+      case 'SYNC_SUCCESS':
         return 'syncCompleted';
       case 'PEST_ALERT':
         return 'pestAlert';
@@ -87,8 +88,6 @@ class NotificationResponse {
         return 'recommendation';
       case 'DIAGNOSIS_COMPLETE':
         return 'diagnosisComplete';
-      case 'SYSTEM_UPDATE':
-        return 'systemUpdate';
       default:
         return 'other';
     }

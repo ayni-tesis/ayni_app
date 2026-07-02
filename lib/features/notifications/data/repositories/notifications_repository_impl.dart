@@ -165,9 +165,12 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
     );
   }
 
+  /// Maps the backend's `NotificationType` enum name (`n.getType().name()`
+  /// in `NotificationResponse`) to our domain enum. `PASSWORD_RESET` has no
+  /// dedicated UI type yet and falls back to `other`.
   NotificationType _parseType(String apiType) {
     switch (apiType.toUpperCase()) {
-      case 'SYNC_COMPLETED':
+      case 'SYNC_SUCCESS':
         return NotificationType.syncCompleted;
       case 'PEST_ALERT':
         return NotificationType.pestAlert;
@@ -175,8 +178,6 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
         return NotificationType.recommendation;
       case 'DIAGNOSIS_COMPLETE':
         return NotificationType.diagnosisComplete;
-      case 'SYSTEM_UPDATE':
-        return NotificationType.systemUpdate;
       default:
         return NotificationType.other;
     }

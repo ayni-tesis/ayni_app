@@ -10,4 +10,9 @@ abstract class ProfileRepository {
   /// Persists the profile on this device. Overwrites any previous
   /// value.
   Future<void> saveProfile(FarmerProfile profile);
+
+  /// Registers the device's FCM token on the server so push
+  /// notifications can be targeted at this device. Silently no-ops
+  /// when offline; the caller does not need to handle failures.
+  Future<void> updateFcmToken(String fcmToken);
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../../../core/constants/app_text_styles.dart';
+import '../../../notifications/presentation/providers/notifications_provider.dart';
 import '../../../profile/presentation/providers/profile_provider.dart';
 import '../providers/auth_provider.dart';
 
@@ -45,6 +46,9 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
 
     if (ok) {
       await ref.read(profileNotifierProvider.notifier).ensureSeededFromAuth();
+      // Register this device's FCM token now that we have a valid
+      // session; bootstrap() alone can't do this on a fresh sign-up.
+      await ref.read(notificationsProvider.notifier).registerFcmToken();
       if (!mounted) return;
 
       showDialog(

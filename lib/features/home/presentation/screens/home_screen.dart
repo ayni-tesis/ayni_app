@@ -76,6 +76,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AyniHeader(
         title: _currentTabIndex == 3 ? 'Account' : 'Ayni',
         showActions: _currentTabIndex != 3,
+        hasNotifications: ref.watch(unreadNotificationsCountProvider) > 0,
       ),
       body: _buildActiveBody(isOnline, isOfflineMode, canDiagnoseOnline),
       bottomNavigationBar: AyniBottomNav(
