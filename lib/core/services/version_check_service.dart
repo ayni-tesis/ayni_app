@@ -9,11 +9,13 @@ class VersionCheckResult {
   final String minimumVersion;
   final bool forceUpdate;
   final String updateUrl;
+  final bool updateAvailable;
 
   VersionCheckResult({
     required this.minimumVersion,
     required this.forceUpdate,
     required this.updateUrl,
+    required this.updateAvailable,
   });
 
   factory VersionCheckResult.fromJson(Map<String, dynamic> json) {
@@ -21,6 +23,7 @@ class VersionCheckResult {
       minimumVersion: json['minimumVersion'] ?? '',
       forceUpdate: json['forceUpdate'] ?? false,
       updateUrl: json['updateUrl'] ?? '',
+      updateAvailable: json['updateAvailable'] ?? false,
     );
   }
 }

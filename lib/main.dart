@@ -152,8 +152,9 @@ class _AppNavigatorState extends ConsumerState<AppNavigator> {
           );
         }
         return; // Halt further routing.
-      } else {
-        // Optional update: show dialog but proceed with routing.
+      } else if (versionResult.updateAvailable) {
+        // Hay una versión más nueva publicada, pero la instalada sigue siendo
+        // compatible: aviso opcional, no bloquea el flujo.
         if (mounted) {
           showDialog(
             context: context,
@@ -166,6 +167,7 @@ class _AppNavigatorState extends ConsumerState<AppNavigator> {
           );
         }
       }
+      // Si updateAvailable es false, la app ya está al día: no se muestra nada.
     }
 
     // After splash delay, route based on auth state.
