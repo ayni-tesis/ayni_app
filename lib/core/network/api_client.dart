@@ -5,11 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Base URL del API Gateway en Azure Container Apps.
 /// En desarrollo local apuntar a `http://10.0.2.2:8080/api` (Android emulator).
 /// En producción usar la URL de Azure:
-/// `https://api-gateway.yellowocean-a28491f5.eastus.azurecontainerapps.io/api`
+/// `https://api-gateway.redgrass-67daf10a.eastus.azurecontainerapps.io/api`
 ///
 /// Establecer la variable de entorno `AYNI_API_BASE_URL` para sobrescribir.
 const String _kDefaultBaseUrl =
-    'https://api-gateway.yellowocean-a28491f5.eastus.azurecontainerapps.io/api';
+    'https://api-gateway.redgrass-67daf10a.eastus.azurecontainerapps.io/api';
 
 /// Claves bajo las que se persisten los tokens en SharedPreferences.
 const String _kAccessTokenKey = 'auth.accessToken';
