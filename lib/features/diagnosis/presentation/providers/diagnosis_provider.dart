@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/network/connectivity_service.dart';
+import '../../../../core/utils/location_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/diagnosis_local_datasource.dart';
 import '../../data/datasources/diagnosis_remote_datasource.dart';
@@ -93,6 +96,8 @@ class DiagnosisState {
   final String? error;
   final Diagnosis? completedDiagnosis;
   final String? detectionImageUrl;
+  final double? latitude;
+  final double? longitude;
 
   const DiagnosisState({
     this.capturedImagePath,
@@ -103,6 +108,8 @@ class DiagnosisState {
     this.error,
     this.completedDiagnosis,
     this.detectionImageUrl,
+    this.latitude,
+    this.longitude,
   });
 
   factory DiagnosisState.initial({bool isOffline = false}) {
@@ -123,6 +130,8 @@ class DiagnosisState {
     String? error,
     Diagnosis? completedDiagnosis,
     String? detectionImageUrl,
+    double? latitude,
+    double? longitude,
   }) {
     return DiagnosisState(
       capturedImagePath: capturedImagePath ?? this.capturedImagePath,
@@ -133,6 +142,8 @@ class DiagnosisState {
       error: error, // Clear error if not explicitly passed
       completedDiagnosis: completedDiagnosis ?? this.completedDiagnosis,
       detectionImageUrl: detectionImageUrl ?? this.detectionImageUrl,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }
@@ -154,6 +165,21 @@ class DiagnosisNotifier extends StateNotifier<DiagnosisState> {
   void setCapturedImage(String imagePath, bool isOffline) {
     state = DiagnosisState.initial(isOffline: isOffline).copyWith(
       capturedImagePath: imagePath,
+    );
+    // Se resuelve en paralelo a la detección/clasificación de plagas, sin
+    // bloquear el flujo: si el usuario niega el permiso o el GPS está
+    // apagado, el diagnóstico simplemente se guarda sin coordenadas.
+    unawaited(_captureLocation(imagePath));
+  }
+
+  Future<void> _captureLocation(String forImagePath) async {
+    final position = await LocationUtils.getCurrentLocation();
+    if (position == null) return;
+    // El usuario pudo reiniciar la captura mientras esperábamos el GPS.
+    if (state.capturedImagePath != forImagePath) return;
+    state = state.copyWith(
+      latitude: position.latitude,
+      longitude: position.longitude,
     );
   }
 
@@ -202,6 +228,8 @@ class DiagnosisNotifier extends StateNotifier<DiagnosisState> {
           detectedLeaves: classifiedLeaves,
           isOffline: state.isOffline,
           isSynced: false,
+          latitude: state.latitude,
+          longitude: state.longitude,
         );
 
         state = state.copyWith(

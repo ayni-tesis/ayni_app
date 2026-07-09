@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import '../../../../core/network/api_client.dart';
 import '../models/notification_api_models.dart';
 
@@ -6,6 +5,10 @@ import '../models/notification_api_models.dart';
 ///
 /// Solo maneja la sincronización con el servidor. Las notificaciones
 /// entrantes llegan por FCM (push), no por polling a este endpoint.
+///
+/// No envuelve `DioException` en excepciones genéricas: el repositorio
+/// necesita el tipo original para decidir cuándo hacer fallback al
+/// almacenamiento local.
 class NotificationRemoteDataSource {
   final ApiClient _api;
 
@@ -16,53 +19,33 @@ class NotificationRemoteDataSource {
     int page = 0,
     int size = 20,
   }) async {
-    try {
-      final response = await _api.get<Map<String, dynamic>>(
-        '/notifications',
-        queryParameters: {'page': page, 'size': size},
-      );
-      return NotificationsPage.fromJson(response.data!);
-    } on DioException catch (e) {
-      throw Exception(e.message);
-    }
+    final response = await _api.get<Map<String, dynamic>>(
+      '/notifications',
+      queryParameters: {'page': page, 'size': size},
+    );
+    return NotificationsPage.fromJson(response.data!);
   }
 
   /// GET /notifications/unread-count
   Future<int> getUnreadCount() async {
-    try {
-      final response = await _api.get<Map<String, dynamic>>(
-        '/notifications/unread-count',
-      );
-      return UnreadCountResponse.fromJson(response.data!).unreadCount;
-    } on DioException catch (e) {
-      throw Exception(e.message);
-    }
+    final response = await _api.get<Map<String, dynamic>>(
+      '/notifications/unread-count',
+    );
+    return UnreadCountResponse.fromJson(response.data!).unreadCount;
   }
 
   /// PATCH /notifications/{id}/read
   Future<void> markAsRead(String id) async {
-    try {
-      await _api.patch('/notifications/$id/read');
-    } on DioException catch (e) {
-      throw Exception(e.message);
-    }
+    await _api.patch('/notifications/$id/read');
   }
 
   /// PATCH /notifications/read-all
   Future<void> markAllAsRead() async {
-    try {
-      await _api.patch('/notifications/read-all');
-    } on DioException catch (e) {
-      throw Exception(e.message);
-    }
+    await _api.patch('/notifications/read-all');
   }
 
   /// DELETE /notifications/{id}
   Future<void> deleteNotification(String id) async {
-    try {
-      await _api.delete('/notifications/$id');
-    } on DioException catch (e) {
-      throw Exception(e.message);
-    }
+    await _api.delete('/notifications/$id');
   }
 }

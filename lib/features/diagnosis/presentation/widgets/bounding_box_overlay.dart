@@ -239,11 +239,9 @@ class _BoundingBoxPainter extends CustomPainter {
       );
     }
 
-    // Label chip
-    final label = getPestBoxLabel(leaf.diagnosedPest);
-    final confidence = leaf.confidence;
-    final labelText =
-        confidence != null ? '$label ${(confidence * 100).toInt()}%' : label;
+    // Label chip — solo el nombre de la plaga; el % de confianza se maneja
+    // internamente (color/severidad) pero no se muestra al usuario.
+    final labelText = getPestBoxLabel(leaf.diagnosedPest);
 
     final textStyle = ui.TextStyle(
       color: Colors.white,

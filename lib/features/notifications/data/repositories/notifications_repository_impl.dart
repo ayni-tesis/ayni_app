@@ -156,13 +156,39 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
     return NotificationItem(
       id: r.id,
       title: r.title,
-      body: r.body,
+      body: _htmlToPlainText(r.body),
       receivedAt: r.receivedAt,
       isRead: r.isRead,
       type: _parseType(r.type),
       imageUrl: r.imageUrl,
       data: r.dataJson ?? const {},
     );
+  }
+
+  /// El `body` de notification-service siempre viaja en HTML — está pensado
+  /// para el canal de correo (SMTP) y se persiste tal cual en la bandeja
+  /// in-app (ver `NotificationContentFactory`/`NotificationEventService` en
+  /// el backend); no hay un campo de texto plano separado para mostrar en
+  /// la app. Lo convertimos aquí para no renderizar tags crudos en la lista.
+  static String _htmlToPlainText(String html) {
+    final withBreaks = html.replaceAll(
+      RegExp(r'<\s*(br|/p|/div|/h[1-6])\s*/?>', caseSensitive: false),
+      '\n',
+    );
+    final withoutTags = withBreaks.replaceAll(RegExp(r'<[^>]+>'), '');
+    final decoded = withoutTags
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'");
+    return decoded
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .join('\n')
+        .trim();
   }
 
   /// Maps the backend's `NotificationType` enum name (`n.getType().name()`

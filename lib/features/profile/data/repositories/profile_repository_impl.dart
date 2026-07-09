@@ -64,8 +64,10 @@ class ProfileRepositoryImpl implements ProfileRepository {
       final entity = _toEntity(remoteProfile);
       // Sync back the server response (includes userId, updatedAt, etc.)
       await _local.save(entity);
-    } on DioException {
-      // Network error → already saved locally, sync later
+    } catch (_) {
+      // Network/server error → already saved locally, sync later.
+      // Nota: _remote envuelve DioException en un Exception genérico,
+      // por eso se captura cualquier excepción y no solo DioException.
     }
   }
 
@@ -77,8 +79,10 @@ class ProfileRepositoryImpl implements ProfileRepository {
       if (!isOnline) return;
 
       await _remote.updateFcmToken(FcmTokenRequest(fcmToken: fcmToken));
-    } on DioException {
-      // Silent failure — token se reintentará en próximo bootstrap
+    } catch (_) {
+      // Silent failure — token se reintentará en próximo bootstrap.
+      // Nota: _remote envuelve DioException en un Exception genérico,
+      // por eso se captura cualquier excepción y no solo DioException.
     }
   }
 

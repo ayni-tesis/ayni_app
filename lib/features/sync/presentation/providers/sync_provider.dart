@@ -117,7 +117,13 @@ class SyncNotifier extends StateNotifier<SyncStatus> {
       final batchResponse = await _syncRepo.syncBatch(pending);
       final queued = batchResponse.queued;
 
-      if (queued > 0) {
+      // "duplicates" son ítems que el servidor ya había recibido en un
+      // intento anterior (idempotencia por localDiagnosisId, ver
+      // SyncRemoteDataSource.syncBatch) — ya están sincronizados del lado
+      // del servidor aunque esta respuesta no los cuente como "queued".
+      // Si solo se chequea queued > 0, un reintento tras una respuesta
+      // perdida deja esos diagnósticos marcados como pendientes para siempre.
+      if (queued > 0 || batchResponse.duplicates > 0) {
         // Marcar todos los diagnósticos del lote como sincronizados.
         // diagnosis-service publica diagnosis.created de forma asíncrona por Kafka.
         final syncedIds = pending.map((d) => d.id).toList();

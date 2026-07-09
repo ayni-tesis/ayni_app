@@ -66,15 +66,19 @@ class DiagnosisHistoryItem {
     required this.syncStatus,
   });
 
+  /// El backend (`DiagnosisHistoryResponse` en history-sync-service) envía
+  /// `latitude`/`longitude` como `String` y `confidenceScore` como `Double`
+  /// nullable — no como `num` no-nulo. Castear directo a `num` revienta el
+  /// parseo de toda la página en cuanto aparece un ítem con coordenadas.
   factory DiagnosisHistoryItem.fromJson(Map<String, dynamic> json) {
     return DiagnosisHistoryItem(
       id: json['id'] as String,
       diagnosisId: json['diagnosisId'] as String,
       pestType: (json['pestType'] as String).toUpperCase(),
-      confidenceScore: (json['confidenceScore'] as num).toDouble(),
+      confidenceScore: (json['confidenceScore'] as num?)?.toDouble() ?? 0.0,
       farmName: json['farmName'] as String?,
-      latitude: (json['latitude'] as num?)?.toDouble(),
-      longitude: (json['longitude'] as num?)?.toDouble(),
+      latitude: double.tryParse(json['latitude']?.toString() ?? ''),
+      longitude: double.tryParse(json['longitude']?.toString() ?? ''),
       capturedAt: DateTime.parse(json['capturedAt'] as String),
       syncedAt: json['syncedAt'] != null
           ? DateTime.parse(json['syncedAt'] as String)

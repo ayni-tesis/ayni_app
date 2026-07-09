@@ -167,6 +167,8 @@ class NotificationsScreen extends ConsumerWidget {
                     const SizedBox(height: 4),
                     Text(
                       item.body,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.bodyRegular.copyWith(
                         color: AppColors.gray1,
                         fontSize: 13,

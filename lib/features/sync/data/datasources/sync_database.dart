@@ -57,6 +57,14 @@ class SyncDatabase {
   // ─── sync_queue ────────────────────────────────────────────────────────────
 
   /// Inserta un diagnóstico en la cola de sincronización.
+  ///
+  /// Usa `ConflictAlgorithm.ignore`: si el id ya existe (p. ej. el
+  /// reconciliador de SyncStatusScreen vuelve a intentar encolar un
+  /// diagnóstico cuyo flag `isSynced` local no se actualizó tras un sync
+  /// por lote), no debe pisar su `is_synced` actual. Con `replace` un
+  /// diagnóstico recién sincronizado (is_synced = 1) se resetea a
+  /// pendiente (is_synced = 0) en cada reconciliación, haciendo que la
+  /// cola nunca se vacíe.
   Future<void> insertDiagnosis(String id, String diagnosisJson) async {
     final db = await getInstance();
     await db.insert(
@@ -67,7 +75,7 @@ class SyncDatabase {
         'is_synced': 0,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       },
-      conflictAlgorithm: ConflictAlgorithm.replace,
+      conflictAlgorithm: ConflictAlgorithm.ignore,
     );
   }
 

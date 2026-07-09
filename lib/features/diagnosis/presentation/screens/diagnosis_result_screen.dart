@@ -28,6 +28,14 @@ class _DiagnosisResultScreenState extends ConsumerState<DiagnosisResultScreen> {
     return AppColors.error;
   }
 
+  /// El % exacto se sigue usando internamente (color, ancho de la barra);
+  /// al usuario se le muestra solo la etiqueta cualitativa.
+  String _getConfidenceLabel(double confidence) {
+    if (confidence >= 0.85) return 'Confianza alta';
+    if (confidence >= 0.60) return 'Confianza media';
+    return 'Confianza baja';
+  }
+
   Color _getPestBadgeColor(PestType pest) {
     switch (pest) {
       case PestType.roya:
@@ -366,7 +374,7 @@ class _DiagnosisResultScreenState extends ConsumerState<DiagnosisResultScreen> {
                           ),
                           const Spacer(),
                           Text(
-                            '${(confidence * 100).toStringAsFixed(1)}%',
+                            _getConfidenceLabel(confidence),
                             style: AppTextStyles.smallTextBold.copyWith(
                               color: _getConfidenceColor(confidence),
                             ),

@@ -61,8 +61,16 @@ class NotificationsNotifier
   Future<void> _bootstrap() async {
     // 1. Render whatever's already on disk so the UI shows up
     //    immediately, even if Firebase is still warming up.
-    final initial = await _repository.getAll();
-    state = AsyncValue.data(initial);
+    // Guarded: an uncaught error here would otherwise leave `state`
+    // stuck at the initial AsyncValue.loading() forever, since this
+    // method runs fire-and-forget from the constructor.
+    try {
+      final initial = await _repository.getAll();
+      state = AsyncValue.data(initial);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+      return;
+    }
 
     // 2. Ask the OS for permission. Non-fatal on failure.
     try {
